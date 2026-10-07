@@ -15,10 +15,10 @@ import {
 export default function DoctorExamine({ auth }: any) {
     const navItems = [
         { name: 'Tổng quan', href: '/doctor/dashboard', icon: LayoutDashboard },
-        { name: 'Lịch làm việc', href: '#', icon: Calendar },
+        { name: 'Lịch làm việc', href: '/doctor/schedule', icon: Calendar },
         { name: 'Khám bệnh', href: '/doctor/examine', icon: Stethoscope },
-        { name: 'Bệnh nhân của tôi', href: '#', icon: UserCircle },
-        { name: 'Thống kê', href: '#', icon: Activity },
+        { name: 'Bệnh nhân của tôi', href: '/doctor/patients', icon: UserCircle },
+        { name: 'Thống kê', href: '/doctor/stats', icon: Activity },
     ];
 
     return (

@@ -23,11 +23,11 @@ export default function Dashboard({ auth }: any) {
         { name: 'Tổng quan', href: '/dashboard', icon: LayoutDashboard },
         { name: 'Đặt lịch khám', href: '/book', icon: CalendarPlus },
         { name: 'Lịch hẹn', href: '/appointments', icon: Calendar },
-        { name: 'Hồ sơ sức khỏe', href: '#', icon: Activity },
-        { name: 'Lịch sử khám', href: '#', icon: History },
-        { name: 'Kết quả xét nghiệm', href: '#', icon: TestTube2 },
-        { name: 'Đơn thuốc', href: '#', icon: Pill },
-        { name: 'Hóa đơn & thanh toán', href: '#', icon: CreditCard },
+        { name: 'Hồ sơ sức khỏe', href: '/patient/records', icon: Activity },
+        { name: 'Lịch sử khám', href: '/patient/history', icon: History },
+        { name: 'Kết quả xét nghiệm', href: '/patient/tests', icon: TestTube2 },
+        { name: 'Đơn thuốc', href: '/patient/prescriptions', icon: Pill },
+        { name: 'Hóa đơn & thanh toán', href: '/patient/billing', icon: CreditCard },
     ];
 
     // Dữ liệu mẫu (Mock data)

@@ -15,11 +15,11 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 export default function AdminDashboard({ auth }: any) {
     const navItems = [
         { name: 'Tổng quan', href: '/admin/dashboard', icon: LayoutDashboard },
-        { name: 'Quản lý Bác sĩ', href: '#', icon: Stethoscope },
-        { name: 'Quản lý Chuyên khoa', href: '#', icon: Activity },
-        { name: 'Quản lý Dịch vụ', href: '#', icon: Building2 },
-        { name: 'Người dùng', href: '#', icon: Users },
-        { name: 'Cấu hình hệ thống', href: '#', icon: Settings },
+        { name: 'Quản lý Bác sĩ', href: '/admin/doctors', icon: Stethoscope },
+        { name: 'Quản lý Chuyên khoa', href: '/admin/specialties', icon: Activity },
+        { name: 'Quản lý Dịch vụ', href: '/admin/services', icon: Building2 },
+        { name: 'Người dùng', href: '/admin/users', icon: Users },
+        { name: 'Cấu hình hệ thống', href: '/admin/settings', icon: Settings },
     ];
 
     const stats = [

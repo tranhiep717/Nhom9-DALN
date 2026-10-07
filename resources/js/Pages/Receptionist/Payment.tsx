@@ -14,10 +14,10 @@ import {
 export default function ReceptionistPayment({ auth }: any) {
     const navItems = [
         { name: 'Tổng quan', href: '/receptionist/dashboard', icon: LayoutDashboard },
-        { name: 'Lịch hẹn', href: '#', icon: Calendar },
-        { name: 'Hàng chờ', href: '#', icon: Users },
+        { name: 'Lịch hẹn', href: '/receptionist/queue', icon: Calendar },
+        { name: 'Hàng chờ', href: '/receptionist/dashboard', icon: Users },
         { name: 'Thanh toán', href: '/receptionist/payment', icon: CreditCard },
-        { name: 'Hồ sơ', href: '#', icon: FileText },
+        { name: 'Hồ sơ', href: '/receptionist/records', icon: FileText },
     ];
 
     return (
