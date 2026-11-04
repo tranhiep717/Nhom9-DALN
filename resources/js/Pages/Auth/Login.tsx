@@ -10,9 +10,11 @@ import { FormEventHandler } from 'react';
 export default function Login({
     status,
     canResetPassword,
+    info,
 }: {
     status?: string;
     canResetPassword: boolean;
+    info?: string;
 }) {
     const { data, setData, post, processing, errors, reset } = useForm({
         email: '',
@@ -35,6 +37,13 @@ export default function Login({
             {status && (
                 <div className="mb-4 text-sm font-medium text-green-600">
                     {status}
+                </div>
+            )}
+
+            {info && (
+                <div className="mb-4 p-3.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-xl text-sm flex items-center gap-2 font-medium">
+                    <span>ℹ️</span>
+                    <span>{info}</span>
                 </div>
             )}
 

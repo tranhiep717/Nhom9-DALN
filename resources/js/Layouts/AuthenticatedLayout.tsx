@@ -2,6 +2,7 @@ import ApplicationLogo from '@/Components/ApplicationLogo';
 import Dropdown from '@/Components/Dropdown';
 import NavLink from '@/Components/NavLink';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink';
+import NotificationDropdown from '@/Components/NotificationDropdown';
 import { Link, usePage } from '@inertiajs/react';
 import { PropsWithChildren, ReactNode, useState } from 'react';
 
@@ -14,6 +15,15 @@ export default function Authenticated({
     const [showingNavigationDropdown, setShowingNavigationDropdown] =
         useState(false);
 
+    const getLogoUrl = () => {
+        const role = (user as any)?.vai_tro?.TenVaiTro;
+        if (role === 'QUAN_TRI_VIEN') return '/admin/dashboard';
+        if (role === 'BAC_SI') return '/doctor/dashboard';
+        if (role === 'LE_TAN') return '/receptionist/dashboard';
+        if (role === 'NHAN_VIEN_CAN_LAM_SANG') return '/cls/dashboard';
+        return '/dashboard';
+    };
+
     return (
         <div className="min-h-screen bg-gray-100">
             <nav className="border-b border-gray-100 bg-white">
@@ -21,7 +31,7 @@ export default function Authenticated({
                     <div className="flex h-16 justify-between">
                         <div className="flex">
                             <div className="flex shrink-0 items-center">
-                                <Link href="/">
+                                <Link href={getLogoUrl()}>
                                     <ApplicationLogo className="block h-9 w-auto fill-current text-gray-800" />
                                 </Link>
                             </div>
@@ -36,8 +46,9 @@ export default function Authenticated({
                             </div>
                         </div>
 
-                        <div className="hidden sm:ms-6 sm:flex sm:items-center">
-                            <div className="relative ms-3">
+                        <div className="hidden sm:ms-6 sm:flex sm:items-center gap-3">
+                            <NotificationDropdown />
+                            <div className="relative ms-1">
                                 <Dropdown>
                                     <Dropdown.Trigger>
                                         <span className="inline-flex rounded-md">

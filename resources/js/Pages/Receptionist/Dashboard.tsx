@@ -11,117 +11,232 @@ import {
     FileText,
     Clock,
     UserCheck,
-    XCircle
+    XCircle,
+    Activity,
+    DollarSign,
+    Receipt
 } from 'lucide-react';
+import { useState } from 'react';
 
-export default function ReceptionistDashboard({ auth }: any) {
+interface AppointmentItem {
+    id: string;
+    appointmentId: number;
+    name: string;
+    phone: string;
+    time: string;
+    doctor: string;
+    status: string;
+    rawStatus: string;
+}
+
+interface ReceptionistDashboardProps {
+    auth: any;
+    stats?: {
+        todayAppointments: number;
+        notArrived: number;
+        checkedIn: number;
+        inProgressVisits: number;
+        unpaidInvoices: number;
+        todayRevenue: number;
+    };
+    appointments?: AppointmentItem[];
+}
+
+export default function ReceptionistDashboard({ auth, stats, appointments = [] }: ReceptionistDashboardProps) {
+    const [searchTerm, setSearchTerm] = useState('');
+
     const navItems = [
         { name: 'Tổng quan', href: '/receptionist/dashboard', icon: LayoutDashboard },
-        { name: 'Lịch hẹn', href: '/receptionist/queue', icon: Calendar },
-        { name: 'Hàng chờ', href: '/receptionist/dashboard', icon: Users },
-        { name: 'Thanh toán', href: '/receptionist/payment', icon: CreditCard },
-        { name: 'Hồ sơ', href: '/receptionist/records', icon: FileText },
+        { name: 'Lịch hẹn & Tiếp nhận', href: '/receptionist/queue', icon: Calendar },
+        { name: 'Thu ngân & Viện phí', href: '/receptionist/payment', icon: CreditCard },
     ];
 
-    const stats = [
-        { title: 'Lịch hẹn hôm nay', value: '45', icon: CalendarClock, color: 'text-primary', bg: 'bg-primary-light' },
-        { title: 'Đã tiếp nhận', value: '30', icon: UserCheck, color: 'text-teal-600', bg: 'bg-teal-100' },
-        { title: 'Chưa đến', value: '15', icon: Clock, color: 'text-orange-600', bg: 'bg-orange-100' },
+    const formatCurrency = (amount: number) => {
+        return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount || 0);
+    };
+
+    const statCards = [
+        { 
+            title: 'Lịch hẹn hôm nay', 
+            value: stats?.todayAppointments ?? 0, 
+            sub: 'Tổng số lịch đăng ký trong ngày',
+            icon: CalendarClock, 
+            color: 'text-primary', 
+            bg: 'bg-primary-light' 
+        },
+        { 
+            title: 'Chờ tiếp nhận', 
+            value: stats?.notArrived ?? 0, 
+            sub: 'Bệnh nhân chưa đến check-in',
+            icon: Clock, 
+            color: 'text-orange-600', 
+            bg: 'bg-orange-100' 
+        },
+        { 
+            title: 'Đã tiếp nhận', 
+            value: stats?.checkedIn ?? 0, 
+            sub: 'Đã vào hàng chờ phòng khám',
+            icon: UserCheck, 
+            color: 'text-teal-600', 
+            bg: 'bg-teal-100' 
+        },
+        { 
+            title: 'Khám đang diễn ra', 
+            value: stats?.inProgressVisits ?? 0, 
+            sub: 'Bác sĩ đang thực hiện khám',
+            icon: Activity, 
+            color: 'text-indigo-600', 
+            bg: 'bg-indigo-100' 
+        },
+        { 
+            title: 'Hóa đơn còn nợ', 
+            value: stats?.unpaidInvoices ?? 0, 
+            sub: 'Chưa thanh toán hoặc nợ một phần',
+            icon: Receipt, 
+            color: 'text-rose-600', 
+            bg: 'bg-rose-100' 
+        },
+        { 
+            title: 'Doanh thu hôm nay', 
+            value: formatCurrency(stats?.todayRevenue ?? 0), 
+            sub: 'Thực thu giao dịch thành công',
+            icon: DollarSign, 
+            color: 'text-emerald-600', 
+            bg: 'bg-emerald-100',
+            isCurrency: true
+        },
     ];
 
-    const appointments = [
-        { id: 'BOOK_827361', name: 'Nguyễn Văn An', time: '09:00', doctor: 'BS. Nguyễn Văn A', status: 'Chưa đến' },
-        { id: 'BOOK_827362', name: 'Trần Thị Bình', time: '09:30', doctor: 'BS. Lê Văn C', status: 'Đã tiếp nhận' },
-        { id: 'BOOK_827363', name: 'Lê Văn Cường', time: '10:00', doctor: 'BS. Trần Thị B', status: 'Chờ thanh toán' },
-    ];
+    const filteredAppointments = appointments.filter((item) => {
+        if (!searchTerm) return true;
+        const q = searchTerm.toLowerCase();
+        return item.name.toLowerCase().includes(q) || 
+               item.phone.toLowerCase().includes(q) || 
+               item.id.toLowerCase().includes(q) ||
+               item.doctor.toLowerCase().includes(q);
+    });
+
+    const receptionistName = auth?.user?.TenDangNhap || 'Nhân viên lễ tân';
 
     return (
         <DashboardLayout
             role="receptionist"
             navItems={navItems}
-            user={auth?.user}
+            user={{ name: receptionistName, code: 'LT001' }}
             header="Bàn làm việc Lễ tân"
         >
-            <Head title="Receptionist Dashboard" />
+            <Head title="Receptionist Dashboard - SmartCare" />
 
             <div className="max-w-7xl mx-auto space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {stats.map((stat, index) => (
-                        <div key={index} className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+                {/* Thẻ thống kê 6 chỉ số */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {statCards.map((stat, index) => (
+                        <div key={index} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <p className="text-sm font-medium text-gray-500">{stat.title}</p>
-                                    <p className="text-3xl font-bold text-gray-900 mt-2">{stat.value}</p>
+                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{stat.title}</p>
+                                    <p className={`font-extrabold text-gray-900 mt-2 ${stat.isCurrency ? 'text-2xl text-emerald-700' : 'text-3xl'}`}>
+                                        {stat.value}
+                                    </p>
                                 </div>
-                                <div className={`w-14 h-14 rounded-full flex items-center justify-center ${stat.bg}`}>
-                                    <stat.icon className={`w-7 h-7 ${stat.color}`} />
+                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${stat.bg}`}>
+                                    <stat.icon className={`w-6 h-6 ${stat.color}`} />
                                 </div>
                             </div>
+                            <p className="text-xs text-gray-400 mt-3 pt-3 border-t border-gray-50 font-medium">
+                                {stat.sub}
+                            </p>
                         </div>
                     ))}
                 </div>
 
+                {/* Bảng danh sách lịch hẹn hôm nay */}
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                    <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50/50">
-                        <h3 className="text-lg font-bold text-gray-900">Danh sách lịch hẹn hôm nay</h3>
+                    <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50/50">
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-900">Danh sách tiếp nhận & lịch hẹn hôm nay</h3>
+                            <p className="text-xs text-slate-500 mt-0.5">Dữ liệu thực tế từ hệ thống tiếp nhận toàn viện</p>
+                        </div>
                         
-                        <div className="flex bg-white border border-gray-300 rounded-xl px-3 py-2 w-full sm:w-64">
-                            <Search className="w-5 h-5 text-gray-400 mr-2" />
-                            <input type="text" placeholder="Tìm BN, Số điện thoại..." className="bg-transparent border-none p-0 focus:ring-0 text-sm w-full" />
+                        <div className="flex items-center gap-3 w-full sm:w-auto">
+                            <div className="flex bg-white border border-gray-200 rounded-xl px-3 py-2 w-full sm:w-64 shadow-sm focus-within:border-primary">
+                                <Search className="w-4 h-4 text-gray-400 mr-2 shrink-0 my-auto" />
+                                <input 
+                                    type="text" 
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    placeholder="Tìm tên, SĐT, mã lịch..." 
+                                    className="bg-transparent border-none p-0 focus:ring-0 text-sm w-full outline-none placeholder:text-gray-400" 
+                                />
+                            </div>
+                            <Link 
+                                href="/receptionist/queue" 
+                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary-hover transition-colors shrink-0 shadow-sm"
+                            >
+                                <span>Quản lý hàng chờ</span>
+                                <span>→</span>
+                            </Link>
                         </div>
                     </div>
+
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm whitespace-nowrap">
                             <thead className="bg-gray-50 border-b border-gray-100 text-gray-600">
                                 <tr>
-                                    <th className="px-6 py-4 font-medium">Giờ hẹn</th>
-                                    <th className="px-6 py-4 font-medium">Mã lịch</th>
-                                    <th className="px-6 py-4 font-medium">Bệnh nhân</th>
-                                    <th className="px-6 py-4 font-medium">Bác sĩ khám</th>
-                                    <th className="px-6 py-4 font-medium">Trạng thái</th>
-                                    <th className="px-6 py-4 font-medium text-right">Thao tác</th>
+                                    <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Thời gian</th>
+                                    <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Mã lịch</th>
+                                    <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Bệnh nhân</th>
+                                    <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Số điện thoại</th>
+                                    <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Bác sĩ khám</th>
+                                    <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Trạng thái</th>
+                                    <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider text-right">Thao tác</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
-                                {appointments.map((item, index) => (
-                                    <tr key={index} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4 font-medium text-gray-900">
-                                            <div className="flex items-center gap-2">
-                                                <Clock className="w-4 h-4 text-gray-400" />
-                                                {item.time}
+                                {filteredAppointments.length > 0 ? (
+                                    filteredAppointments.map((item, index) => (
+                                        <tr key={index} className="hover:bg-slate-50/80 transition-colors">
+                                            <td className="px-6 py-4 font-medium text-gray-900">
+                                                <div className="flex items-center gap-2">
+                                                    <Clock className="w-4 h-4 text-gray-400" />
+                                                    <span>{item.time}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 font-mono text-xs font-bold text-primary">{item.id}</td>
+                                            <td className="px-6 py-4 font-bold text-gray-900">{item.name}</td>
+                                            <td className="px-6 py-4 text-gray-600 text-xs font-mono">{item.phone}</td>
+                                            <td className="px-6 py-4 text-gray-700">{item.doctor}</td>
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                                    item.rawStatus === 'DA_TIEP_NHAN' ? 'bg-teal-100 text-teal-800' : 
+                                                    item.rawStatus === 'HOAN_THANH' ? 'bg-emerald-100 text-emerald-800' :
+                                                    item.rawStatus === 'DA_HUY' ? 'bg-rose-100 text-rose-800' :
+                                                    'bg-orange-100 text-orange-800'
+                                                }`}>
+                                                    {item.status}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <Link 
+                                                    href={`/receptionist/queue?search=${encodeURIComponent(item.name)}`}
+                                                    className="inline-flex items-center justify-center px-3 py-1.5 border border-primary/20 text-xs font-bold rounded-lg text-primary hover:bg-primary-light/50 transition-colors"
+                                                >
+                                                    Xem hàng chờ
+                                                </Link>
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                                            <div className="flex flex-col items-center justify-center gap-2">
+                                                <Users className="w-8 h-8 text-slate-300" />
+                                                <p className="font-medium text-slate-600">Không tìm thấy lịch hẹn nào hôm nay</p>
+                                                <p className="text-xs text-slate-400">Dữ liệu sẽ tự động cập nhật khi có bệnh nhân đặt lịch hoặc tiếp nhận mới</p>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 font-medium text-primary">{item.id}</td>
-                                        <td className="px-6 py-4 text-gray-900 font-medium">{item.name}</td>
-                                        <td className="px-6 py-4 text-gray-600">{item.doctor}</td>
-                                        <td className="px-6 py-4">
-                                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                                                item.status === 'Chưa đến' ? 'bg-orange-100 text-orange-700' : 
-                                                item.status === 'Đã tiếp nhận' ? 'bg-teal-100 text-teal-700' :
-                                                'bg-blue-100 text-blue-700'
-                                            }`}>
-                                                {item.status}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            {item.status === 'Chưa đến' && (
-                                                <div className="flex justify-end gap-2">
-                                                    <button className="px-3 py-1.5 border border-red-200 text-red-600 rounded flex items-center gap-1 text-xs font-medium hover:bg-red-50">
-                                                        <XCircle className="w-3.5 h-3.5" /> Bỏ hẹn
-                                                    </button>
-                                                    <button className="px-3 py-1.5 bg-primary text-white rounded flex items-center gap-1 text-xs font-medium hover:bg-primary-hover">
-                                                        <UserCheck className="w-3.5 h-3.5" /> Tiếp nhận
-                                                    </button>
-                                                </div>
-                                            )}
-                                            {item.status === 'Chờ thanh toán' && (
-                                                <Link href="/receptionist/payment" className="px-3 py-1.5 bg-blue-600 text-white rounded inline-flex items-center gap-1 text-xs font-medium hover:bg-blue-700">
-                                                    Thanh toán
-                                                </Link>
-                                            )}
-                                        </td>
                                     </tr>
-                                ))}
+                                )}
                             </tbody>
                         </table>
                     </div>

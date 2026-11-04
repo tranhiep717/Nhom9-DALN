@@ -1,11 +1,28 @@
-import { Link } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import { PropsWithChildren, useState } from 'react';
 import ApplicationLogo from '@/Components/ApplicationLogo';
-import { Menu, X, MessageCircle } from 'lucide-react';
+import { Menu, X, LogOut, LayoutDashboard } from 'lucide-react';
+import AiChatWidget from '@/Components/AiChatWidget';
 
 export default function PublicLayout({ children }: PropsWithChildren) {
     const [showingNavigationDropdown, setShowingNavigationDropdown] = useState(false);
-    const [isChatOpen, setIsChatOpen] = useState(false);
+    const { props } = usePage();
+    const authUser = (props as any)?.auth?.user;
+
+    const getDashboardUrl = () => {
+        if (!authUser) return '/';
+        const role = authUser.vai_tro?.TenVaiTro;
+        if (role === 'QUAN_TRI_VIEN') return '/admin/dashboard';
+        if (role === 'BAC_SI') return '/doctor/dashboard';
+        if (role === 'LE_TAN') return '/receptionist/dashboard';
+        if (role === 'NHAN_VIEN_CAN_LAM_SANG') return '/cls/dashboard';
+        return '/dashboard';
+    };
+
+    const getDisplayName = () => {
+        if (!authUser) return '';
+        return authUser.name || authUser.HoTen || authUser.bac_si?.HoTen || authUser.benh_nhan?.HoTen || authUser.TenDangNhap || 'Tài khoản';
+    };
 
     return (
         <div className="min-h-screen bg-neutral">
@@ -16,7 +33,7 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                         {/* Logo & Menu (Desktop) */}
                         <div className="flex items-center">
                             <div className="shrink-0 flex items-center">
-                                <Link href="/" className="flex items-center gap-2">
+                                <Link href={getDashboardUrl()} className="flex items-center gap-2">
                                     <ApplicationLogo className="block h-10 w-auto" />
                                     <span className="text-xl font-bold text-darkblue hidden sm:block">SmartCare</span>
                                 </Link>
@@ -42,12 +59,36 @@ export default function PublicLayout({ children }: PropsWithChildren) {
 
                         {/* Right side (Desktop) */}
                         <div className="hidden lg:flex lg:items-center lg:ml-6 gap-4">
-                            <Link href={route('login')} className="text-sm font-medium text-gray-600 hover:text-primary transition-colors">
-                                Đăng nhập
-                            </Link>
-                            <Link href={route('register')} className="text-sm font-medium text-gray-600 hover:text-primary transition-colors">
-                                Đăng ký
-                            </Link>
+                            {authUser ? (
+                                <div className="flex items-center gap-3">
+                                    <Link 
+                                        href={getDashboardUrl()} 
+                                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold text-primary bg-primary-light/60 hover:bg-primary-light transition-colors"
+                                    >
+                                        <LayoutDashboard className="w-4 h-4" />
+                                        <span>Bảng điều khiển</span>
+                                        <span className="text-xs text-slate-500 font-normal">({getDisplayName()})</span>
+                                    </Link>
+                                    <Link
+                                        method="post"
+                                        href={route('logout')}
+                                        as="button"
+                                        className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                                    >
+                                        <LogOut className="w-4 h-4 text-red-500" />
+                                        <span>Đăng xuất</span>
+                                    </Link>
+                                </div>
+                            ) : (
+                                <>
+                                    <Link href={route('login')} className="text-sm font-medium text-gray-600 hover:text-primary transition-colors">
+                                        Đăng nhập
+                                    </Link>
+                                    <Link href={route('register')} className="text-sm font-medium text-gray-600 hover:text-primary transition-colors">
+                                        Đăng ký
+                                    </Link>
+                                </>
+                            )}
                             <Link
                                 href="/book"
                                 className="inline-flex items-center justify-center px-5 py-2.5 border border-transparent text-sm font-medium rounded-[12px] text-white bg-primary hover:bg-primary-hover shadow-sm transition-all active:scale-95"
@@ -91,14 +132,35 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                         <Link href="/book" className="flex items-center justify-center w-full px-4 py-3 border border-transparent text-base font-medium rounded-xl text-white bg-primary hover:bg-primary-hover shadow-sm">
                             Đặt lịch khám
                         </Link>
-                        <div className="flex gap-4">
-                            <Link href={route('login')} className="flex-1 flex justify-center py-2.5 border border-gray-300 rounded-xl text-base font-medium text-gray-700 bg-white hover:bg-gray-50">
-                                Đăng nhập
-                            </Link>
-                            <Link href={route('register')} className="flex-1 flex justify-center py-2.5 border border-gray-300 rounded-xl text-base font-medium text-gray-700 bg-white hover:bg-gray-50">
-                                Đăng ký
-                            </Link>
-                        </div>
+                        {authUser ? (
+                            <div className="space-y-2">
+                                <Link 
+                                    href={getDashboardUrl()} 
+                                    className="flex items-center justify-center gap-2 w-full py-2.5 border border-primary/30 rounded-xl text-base font-semibold text-primary bg-primary-light/40"
+                                >
+                                    <LayoutDashboard className="w-5 h-5" />
+                                    <span>Bảng điều khiển ({getDisplayName()})</span>
+                                </Link>
+                                <Link 
+                                    method="post" 
+                                    href={route('logout')} 
+                                    as="button" 
+                                    className="flex items-center justify-center gap-2 w-full py-2.5 border border-red-200 rounded-xl text-base font-medium text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+                                >
+                                    <LogOut className="w-5 h-5 text-red-500" />
+                                    <span>Đăng xuất</span>
+                                </Link>
+                            </div>
+                        ) : (
+                            <div className="flex gap-4">
+                                <Link href={route('login')} className="flex-1 flex justify-center py-2.5 border border-gray-300 rounded-xl text-base font-medium text-gray-700 bg-white hover:bg-gray-50">
+                                    Đăng nhập
+                                </Link>
+                                <Link href={route('register')} className="flex-1 flex justify-center py-2.5 border border-gray-300 rounded-xl text-base font-medium text-gray-700 bg-white hover:bg-gray-50">
+                                    Đăng ký
+                                </Link>
+                            </div>
+                        )}
                     </div>
                 </div>
             </header>
@@ -154,41 +216,8 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                 </div>
             </footer>
 
-            {/* AI Assistant Button */}
-            <div className="fixed bottom-6 right-6 z-50">
-                {isChatOpen && (
-                    <div className="absolute bottom-16 right-0 w-80 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden mb-4 flex flex-col h-96">
-                        <div className="bg-primary text-white p-4 flex justify-between items-center">
-                            <span className="font-medium">Trợ lý ảo SmartCare</span>
-                            <button onClick={() => setIsChatOpen(false)} className="text-white hover:text-gray-200">
-                                <X className="h-5 w-5" />
-                            </button>
-                        </div>
-                        <div className="flex-1 p-4 overflow-y-auto bg-gray-50 text-sm">
-                            <div className="bg-white p-3 rounded-xl rounded-tl-none shadow-sm inline-block max-w-[85%] mb-4 border border-gray-100 text-gray-700">
-                                Chào bạn! Tôi là trợ lý ảo SmartCare. Tôi có thể giúp bạn hướng dẫn đặt lịch khám, tìm hiểu các chức năng của hệ thống. Vui lòng cho tôi biết bạn cần hỗ trợ gì?
-                                <br/><br/>
-                                <i>(Lưu ý: Tôi không chẩn đoán hay kê đơn thuốc).</i>
-                            </div>
-                        </div>
-                        <div className="p-3 border-t border-gray-100 bg-white">
-                            <input 
-                                type="text" 
-                                placeholder="Nhập câu hỏi..." 
-                                className="w-full text-sm rounded-xl border-gray-300 focus:border-primary focus:ring focus:ring-primary focus:ring-opacity-50"
-                                disabled
-                            />
-                        </div>
-                    </div>
-                )}
-                
-                <button 
-                    onClick={() => setIsChatOpen(!isChatOpen)}
-                    className="h-14 w-14 bg-primary text-white rounded-full flex items-center justify-center shadow-lg hover:bg-primary-hover hover:scale-105 transition-all focus:outline-none focus:ring-4 focus:ring-primary/30"
-                >
-                    {isChatOpen ? <X className="h-6 w-6" /> : <MessageCircle className="h-7 w-7" />}
-                </button>
-            </div>
+            {/* SmartCare AI Chatbot Assistant Widget */}
+            <AiChatWidget />
         </div>
     );
 }
