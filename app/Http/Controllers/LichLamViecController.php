@@ -20,7 +20,13 @@ class LichLamViecController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $query = LichLamViec::query()->with(['bacSi:MaBacSi,HoTen,HocVi,MaChuyenKhoa', 'caKhams']);
+        $query = LichLamViec::query()->with([
+            'bacSi:MaBacSi,HoTen,HocVi,MaChuyenKhoa',
+            'bacSi.chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa',
+            'taiKhoan:MaTaiKhoan,TenDangNhap,Email,MaVaiTro',
+            'taiKhoan.vaiTro:MaVaiTro,TenVaiTro',
+            'caKhams'
+        ]);
 
         // Phân quyền: Bác sĩ chỉ xem lịch của chính mình
         if ($user && $user->isBacSi()) {
@@ -34,7 +40,7 @@ class LichLamViecController extends Controller
             $query->where('MaBacSi', $maBacSi);
         }
 
-        // Lọc theo ngày
+        // Lọc theo ngày (mặc định lấy tuần hiện tại cho bác sĩ nếu không chọn ngày cụ thể)
         if ($date = $request->input('date')) {
             $query->whereDate('NgayLamViec', $date);
         } elseif ($from = $request->input('from_date')) {
@@ -42,6 +48,10 @@ class LichLamViecController extends Controller
             if ($to = $request->input('to_date')) {
                 $query->whereDate('NgayLamViec', '<=', $to);
             }
+        } elseif ($user && $user->isBacSi()) {
+            $from = now()->startOfWeek()->toDateString();
+            $to = now()->endOfWeek()->toDateString();
+            $query->whereDate('NgayLamViec', '>=', $from)->whereDate('NgayLamViec', '<=', $to);
         }
 
         // Lọc theo trạng thái
@@ -65,16 +75,73 @@ class LichLamViecController extends Controller
                 ->orderBy('HoTen', 'asc')
                 ->get();
 
+            $clsStaff = \App\Models\TaiKhoan::with('vaiTro:MaVaiTro,TenVaiTro')
+                ->whereHas('vaiTro', fn ($query) => $query->where('TenVaiTro', 'NHAN_VIEN_CAN_LAM_SANG'))
+                ->orderBy('Email', 'asc')
+                ->get()
+                ->map(function ($staff) {
+                    return [
+                        'MaTaiKhoan' => $staff->MaTaiKhoan,
+                        'TenDangNhap' => $staff->TenDangNhap,
+                        'HoTen' => $staff->name ?? $staff->TenDangNhap,
+                        'Email' => $staff->Email,
+                        'TrangThai' => $staff->TrangThai,
+                        'role' => 'CLS',
+                    ];
+                });
+
+            $receptionStaff = \App\Models\TaiKhoan::with('vaiTro:MaVaiTro,TenVaiTro')
+                ->whereHas('vaiTro', fn ($query) => $query->where('TenVaiTro', 'LE_TAN'))
+                ->orderBy('Email', 'asc')
+                ->get()
+                ->map(function ($staff) {
+                    return [
+                        'MaTaiKhoan' => $staff->MaTaiKhoan,
+                        'TenDangNhap' => $staff->TenDangNhap,
+                        'HoTen' => $staff->name ?? $staff->TenDangNhap,
+                        'Email' => $staff->Email,
+                        'TrangThai' => $staff->TrangThai,
+                        'role' => 'RECEPTION',
+                    ];
+                });
+
             return Inertia::render('Admin/Schedules', [
                 'schedules' => $schedules,
                 'doctors' => $doctors,
+                'staffGroups' => [
+                    'cls' => $clsStaff,
+                    'reception' => $receptionStaff,
+                ],
                 'filters' => $request->only(['date', 'from_date', 'to_date', 'doctor_id', 'status']),
             ]);
         }
 
+        // Dành cho bác sĩ: Lấy đơn đổi ca chờ bác sĩ xác nhận + danh sách đồng nghiệp
+        $requestsForMe = \App\Models\DonTuNhanSu::with(['taiKhoan.vaiTro', 'taiKhoan.bacSi.chuyenKhoa', 'lichLamViec', 'lichDoiSang'])
+            ->where('TaiKhoanDoiCung', $user->MaTaiKhoan)
+            ->where('TrangThai', 'CHO_DONG_NGHIEP_XAC_NHAN')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $myRequests = \App\Models\DonTuNhanSu::with(['taiKhoanDoiCung.bacSi', 'lichLamViec', 'lichDoiSang'])
+            ->where('MaTaiKhoan', $user->MaTaiKhoan)
+            ->orderBy('created_at', 'desc')
+            ->limit(30)
+            ->get();
+
+        $colleagues = \App\Http\Controllers\ChamCongController::getEligibleColleagues($user);
+
         return Inertia::render('Doctor/Schedule', [
             'schedules' => $schedules,
-            'filters' => $request->only(['date', 'from_date', 'to_date', 'doctor_id']),
+            'requestsForMe' => $requestsForMe,
+            'myRequests' => $myRequests,
+            'colleagues' => $colleagues,
+            'filters' => [
+                'date' => $date,
+                'from_date' => $from,
+                'to_date' => $to,
+                'doctor_id' => $request->input('doctor_id'),
+            ],
         ]);
     }
 
@@ -118,26 +185,40 @@ class LichLamViecController extends Controller
             return response()->json(['success' => false, 'message' => 'Bạn không có quyền tạo lịch làm việc.'], 403);
         }
 
-        // Xác định MaBacSi
+        // Xác định MaBacSi hoặc MaTaiKhoan (nhân sự Lễ tân / CLS)
+        $maTaiKhoan = null;
         if ($isDoctor) {
             $maBacSi = $user->bacSi?->MaBacSi;
             if (!$maBacSi) {
                 return response()->json(['success' => false, 'message' => 'Hồ sơ bác sĩ chưa hợp lệ.'], 400);
             }
         } else {
-            // Admin chỉ định bác sĩ
-            $request->validate([
-                'MaBacSi' => ['required', 'exists:bac_si,MaBacSi'],
-            ], [
-                'MaBacSi.required' => 'Vui lòng chọn bác sĩ.',
-                'MaBacSi.exists' => 'Bác sĩ được chọn không tồn tại.',
-            ]);
-            $maBacSi = $request->input('MaBacSi');
+            // Admin có thể chọn Bác sĩ HOẶC Tài khoản nhân viên (CLS, Lễ tân)
+            if ($request->filled('MaTaiKhoan')) {
+                $request->validate([
+                    'MaTaiKhoan' => ['required', 'exists:tai_khoan,MaTaiKhoan'],
+                ], [
+                    'MaTaiKhoan.required' => 'Vui lòng chọn nhân viên.',
+                    'MaTaiKhoan.exists' => 'Tài khoản nhân viên không tồn tại.',
+                ]);
+                $maTaiKhoan = (int)$request->input('MaTaiKhoan');
+                $maBacSi = null;
+            } else {
+                $request->validate([
+                    'MaBacSi' => ['required', 'exists:bac_si,MaBacSi'],
+                ], [
+                    'MaBacSi.required' => 'Vui lòng chọn bác sĩ hoặc nhân sự.',
+                    'MaBacSi.exists' => 'Bác sĩ được chọn không tồn tại.',
+                ]);
+                $maBacSi = (int)$request->input('MaBacSi');
+                $maTaiKhoan = null;
+            }
         }
 
         // 2. Validate dữ liệu
         $validated = $request->validate([
             'NgayLamViec' => ['required', 'date', 'after_or_equal:today'],
+            'LoaiCa' => ['nullable', 'string', 'in:sang,chieu,toi,dem,ngay,custom'],
             'GioBatDau' => ['required', 'date_format:H:i,H:i:s'],
             'GioKetThuc' => ['required', 'date_format:H:i,H:i:s', 'after:GioBatDau'],
             'SoLuongTiepNhan' => ['nullable', 'integer', 'min:1'],
@@ -145,17 +226,39 @@ class LichLamViecController extends Controller
         ], [
             'NgayLamViec.required' => 'Vui lòng chọn ngày làm việc.',
             'NgayLamViec.after_or_equal' => 'Ngày làm việc không thể ở quá khứ.',
+            'LoaiCa.in' => 'Loại ca không hợp lệ.',
             'GioBatDau.required' => 'Vui lòng nhập giờ bắt đầu.',
             'GioKetThuc.required' => 'Vui lòng nhập giờ kết thúc.',
             'GioKetThuc.after' => 'Giờ kết thúc phải sau giờ bắt đầu.',
         ]);
 
-        // 3. Kiểm tra lịch bị trùng khung giờ của bác sĩ trong cùng ngày
-        $this->checkScheduleConflict($maBacSi, $validated['NgayLamViec'], $validated['GioBatDau'], $validated['GioKetThuc']);
+        $validated['LoaiCa'] = $validated['LoaiCa'] ?? \App\Models\LichLamViec::normalizeShiftType($validated['GioBatDau'], $validated['GioKetThuc']);
+
+        if ($maBacSi) {
+            // 3. Mỗi bác sĩ chỉ được có tối đa 1 ca làm việc trong 1 ngày
+            $this->checkDoctorDailyScheduleLimit($maBacSi, $validated['NgayLamViec']);
+
+            // 4. Kiểm tra lịch bị trùng khung giờ của bác sĩ trong cùng ngày
+            $this->checkScheduleConflict($maBacSi, $validated['NgayLamViec'], $validated['GioBatDau'], $validated['GioKetThuc']);
+        } elseif ($maTaiKhoan) {
+            // Kiểm tra nhân sự không trùng ca trong cùng ngày và cùng loại ca
+            $exists = LichLamViec::where('MaTaiKhoan', $maTaiKhoan)
+                ->where('NgayLamViec', $validated['NgayLamViec'])
+                ->where('LoaiCa', $validated['LoaiCa'])
+                ->exists();
+            if ($exists) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Nhân sự đã được phân công ca làm việc này trong ngày ' . $validated['NgayLamViec'],
+                ], 422);
+            }
+        }
 
         $schedule = LichLamViec::create([
             'MaBacSi' => $maBacSi,
+            'MaTaiKhoan' => $maTaiKhoan,
             'NgayLamViec' => $validated['NgayLamViec'],
+            'LoaiCa' => $validated['LoaiCa'],
             'GioBatDau' => $validated['GioBatDau'],
             'GioKetThuc' => $validated['GioKetThuc'],
             'SoLuongTiepNhan' => $validated['SoLuongTiepNhan'] ?? 10,
@@ -165,7 +268,7 @@ class LichLamViecController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Tạo lịch làm việc thành công.',
-            'data' => $schedule->load('bacSi:MaBacSi,HoTen'),
+            'data' => $schedule->load(['bacSi:MaBacSi,HoTen', 'taiKhoan:MaTaiKhoan,TenDangNhap,Email']),
         ], 201);
     }
 
@@ -192,6 +295,7 @@ class LichLamViecController extends Controller
 
         $validated = $request->validate([
             'NgayLamViec' => ['sometimes', 'required', 'date'],
+            'LoaiCa' => ['sometimes', 'nullable', 'string', 'in:sang,chieu,toi,dem,ngay,custom'],
             'GioBatDau' => ['sometimes', 'required', 'date_format:H:i,H:i:s'],
             'GioKetThuc' => ['sometimes', 'required', 'date_format:H:i,H:i:s'],
             'SoLuongTiepNhan' => ['sometimes', 'nullable', 'integer', 'min:1'],
@@ -201,6 +305,7 @@ class LichLamViecController extends Controller
         $ngay = $validated['NgayLamViec'] ?? $schedule->NgayLamViec;
         $gioBD = $validated['GioBatDau'] ?? $schedule->GioBatDau;
         $gioKT = $validated['GioKetThuc'] ?? $schedule->GioKetThuc;
+        $loaiCa = $validated['LoaiCa'] ?? ($schedule->LoaiCa ?? \App\Models\LichLamViec::normalizeShiftType($gioBD, $gioKT));
 
         if (strtotime($gioKT) <= strtotime($gioBD)) {
             throw ValidationException::withMessages([
@@ -220,11 +325,15 @@ class LichLamViecController extends Controller
             }
         }
 
+        // Mỗi bác sĩ chỉ được có tối đa 1 ca làm việc trong 1 ngày
+        $this->checkDoctorDailyScheduleLimit($schedule->MaBacSi, $ngay, $schedule->MaLichLamViec);
+
         // Kiểm tra trùng lịch (trừ chính bản ghi này)
         $this->checkScheduleConflict($schedule->MaBacSi, $ngay, $gioBD, $gioKT, $schedule->MaLichLamViec);
 
         $schedule->update([
             'NgayLamViec' => $ngay,
+            'LoaiCa' => $loaiCa,
             'GioBatDau' => $gioBD,
             'GioKetThuc' => $gioKT,
             'SoLuongTiepNhan' => $validated['SoLuongTiepNhan'] ?? $schedule->SoLuongTiepNhan,
@@ -277,6 +386,23 @@ class LichLamViecController extends Controller
     /**
      * Kiểm tra trùng lặp lịch làm việc trong cùng ngày của bác sĩ
      */
+    protected function checkDoctorDailyScheduleLimit(int $maBacSi, string $ngayLamViec, ?int $ignoreId = null): void
+    {
+        $query = LichLamViec::where('MaBacSi', $maBacSi)
+            ->whereDate('NgayLamViec', $ngayLamViec)
+            ->where('TrangThai', '<>', 'DONG');
+
+        if ($ignoreId) {
+            $query->where('MaLichLamViec', '<>', $ignoreId);
+        }
+
+        if ($query->exists()) {
+            throw ValidationException::withMessages([
+                'NgayLamViec' => 'Mỗi bác sĩ chỉ được phân công tối đa 1 ca làm việc trong 1 ngày. Vui lòng chọn ca cố định hoặc điều chỉnh lịch hiện có.',
+            ]);
+        }
+    }
+
     protected function checkScheduleConflict(int $maBacSi, string $ngayLamViec, string $gioBatDau, string $gioKetThuc, ?int $ignoreId = null): void
     {
         $query = LichLamViec::where('MaBacSi', $maBacSi)

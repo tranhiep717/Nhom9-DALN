@@ -20,9 +20,10 @@ import {
     ShieldCheck,
     Loader2
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import axios from 'axios';
-import { adminNavItems } from './Dashboard';
+import { adminNavItems } from '@/constants/navigation';
+import AdminPagination from '@/Components/AdminPagination';
 
 interface PatientItem {
     MaBenhNhan: number;
@@ -56,9 +57,17 @@ export default function Patients({ auth, patients = [], filters = {} }: Patients
     const [search, setSearch] = useState(filters.search || '');
     const [genderFilter, setGenderFilter] = useState(filters.gender || '');
 
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
+
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
     const [loadingDetail, setLoadingDetail] = useState(false);
+
+    const paginatedPatients = useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return patients.slice(start, start + pageSize);
+    }, [patients, currentPage, pageSize]);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
@@ -169,7 +178,14 @@ export default function Patients({ auth, patients = [], filters = {} }: Patients
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 text-xs">
-                                {patients.map((bn) => (
+                                {paginatedPatients.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                                            Không tìm thấy hồ sơ bệnh nhân nào phù hợp.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    paginatedPatients.map((bn) => (
                                     <tr key={bn.MaBenhNhan} className="hover:bg-slate-50/80 transition-colors">
                                         <td className="px-6 py-4 font-mono font-bold text-teal-700">
                                             #{bn.MaBenhNhan}
@@ -218,10 +234,18 @@ export default function Patients({ auth, patients = [], filters = {} }: Patients
                                             </button>
                                         </td>
                                     </tr>
-                                ))}
+                                )))}
                             </tbody>
                         </table>
                     </div>
+
+                    <AdminPagination
+                        currentPage={currentPage}
+                        totalItems={patients.length}
+                        pageSize={pageSize}
+                        onPageChange={setCurrentPage}
+                        onPageSizeChange={setPageSize}
+                    />
                 </div>
             </div>
 

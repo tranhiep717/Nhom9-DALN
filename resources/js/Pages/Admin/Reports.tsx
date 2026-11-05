@@ -14,7 +14,7 @@ import {
     Filter
 } from 'lucide-react';
 import { useState } from 'react';
-import { adminNavItems } from './Dashboard';
+import { adminNavItems } from '@/constants/navigation';
 
 interface PaymentMethodSummary {
     PhuongThucThanhToan: string;

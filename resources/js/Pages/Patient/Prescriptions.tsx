@@ -13,7 +13,7 @@ import {
     ChevronDown,
     ChevronUp
 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { patientNavItems } from './Dashboard';
 
 interface ChiTietThuoc {
@@ -67,6 +67,36 @@ export default function Prescriptions({ auth, prescriptions = [] }: Prescription
     const [search, setSearch] = useState('');
     const [selectedPrintDon, setSelectedPrintDon] = useState<DonThuocItem | null>(null);
 
+    const asArray = <T,>(value: T | T[] | null | undefined): T[] => {
+        if (Array.isArray(value)) return value;
+        return value ? [value] : [];
+    };
+
+    const normalizePrescriptionItems = (items: any[] = []) => {
+        return items.map((item: any) => ({
+            ...item,
+            MaChiTiet: item?.MaChiTiet ?? item?.MaChiTietDonThuoc ?? item?.ma_chi_tiet_don_thuoc ?? 0,
+            SoLuong: Number(item?.SoLuong ?? item?.so_luong ?? 0),
+            DonGia: Number(item?.DonGia ?? item?.don_gia ?? 0),
+            ThanhTien: Number(item?.ThanhTien ?? item?.thanh_tien ?? ((Number(item?.SoLuong ?? item?.so_luong ?? 0) * Number(item?.DonGia ?? item?.don_gia ?? 0)))),
+            CachDung: item?.CachDung ?? item?.LieuDung ?? item?.lieu_dung ?? item?.ThoiGianDung ?? item?.thoi_gian_dung ?? 'Theo chỉ định của bác sĩ',
+            thuoc: item?.thuoc ?? item?.thuocInfo ?? item?.thuoc_info,
+        }));
+    };
+
+    const normalizedPrescriptions = useMemo(() => {
+        return (prescriptions || []).map((don: any) => {
+            const items = normalizePrescriptionItems(asArray(don?.chiTietDonThuocs ?? don?.chi_tiet_don_thuocs));
+            return {
+                ...don,
+                bacSi: don?.bacSi ?? don?.bac_si,
+                luotKham: don?.luotKham ?? don?.luot_kham,
+                chiTietDonThuocs: items,
+                TongTienThuoc: Number(don?.TongTienThuoc ?? don?.tong_tien_thuoc ?? items.reduce((acc, curr) => acc + Number(curr.ThanhTien ?? ((curr.SoLuong || 0) * (curr.DonGia || 0))), 0)),
+            };
+        });
+    }, [prescriptions]);
+
     const formatCurrency = (val?: number) => {
         return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val || 0);
     };
@@ -89,10 +119,10 @@ export default function Prescriptions({ auth, prescriptions = [] }: Prescription
     };
 
     // Lọc theo từ khóa tên thuốc
-    const filteredPrescriptions = prescriptions.filter((don) => {
+    const filteredPrescriptions = normalizedPrescriptions.filter((don) => {
         if (!search.trim()) return true;
         const q = search.toLowerCase();
-        const hasMed = don.chiTietDonThuocs?.some((ct) =>
+        const hasMed = don.chiTietDonThuocs?.some((ct: any) =>
             ct.thuoc?.TenThuoc?.toLowerCase().includes(q)
         );
         const hasDoc = don.bacSi?.HoTen?.toLowerCase().includes(q);
@@ -141,7 +171,7 @@ export default function Prescriptions({ auth, prescriptions = [] }: Prescription
                         {filteredPrescriptions.map((don) => {
                             const doc = don.bacSi;
                             const items = don.chiTietDonThuocs || [];
-                            const totalAmount = don.TongTienThuoc ?? items.reduce((acc, curr) => acc + (curr.ThanhTien || (curr.SoLuong * curr.DonGia)), 0);
+                            const totalAmount = don.TongTienThuoc ?? items.reduce((acc: number, curr: any) => acc + (curr.ThanhTien || (curr.SoLuong * curr.DonGia)), 0);
 
                             return (
                                 <div
@@ -195,7 +225,7 @@ export default function Prescriptions({ auth, prescriptions = [] }: Prescription
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-100 text-xs">
-                                                    {items.map((item, idx) => (
+                                                    {items.map((item: any, idx: number) => (
                                                         <tr key={item.MaChiTiet} className="hover:bg-slate-50/60 transition-colors">
                                                             <td className="px-4 py-3 text-slate-400 font-mono">{idx + 1}</td>
                                                             <td className="px-4 py-3">

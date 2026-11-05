@@ -34,10 +34,35 @@ class HandleInertiaRequests extends Middleware
             $user->loadMissing(['vaiTro', 'benhNhan', 'bacSi']);
         }
 
+        $todaySchedule = null;
+        $todayAttendance = null;
+
+        if ($user && ($user->isBacSi() || $user->isLeTan() || $user->isNhanVienCanLamSang())) {
+            $today = now()->toDateString();
+            $maBacSi = $user->bacSi?->MaBacSi;
+            $maTaiKhoan = $user->MaTaiKhoan;
+
+            $todaySchedule = \App\Models\LichLamViec::query()
+                ->when($maBacSi, fn ($q) => $q->where('MaBacSi', $maBacSi))
+                ->when(!$maBacSi && $maTaiKhoan, fn ($q) => $q->where('MaTaiKhoan', $maTaiKhoan))
+                ->whereDate('NgayLamViec', $today)
+                ->first();
+
+            $todayAttendance = \App\Models\ChamCong::query()
+                ->with('donTu')
+                ->when($maBacSi, fn ($q) => $q->where('MaBacSi', $maBacSi))
+                ->when(!$maBacSi && $maTaiKhoan, fn ($q) => $q->where('MaTaiKhoan', $maTaiKhoan))
+                ->whereDate('NgayChamCong', $today)
+                ->first();
+        }
+
         return [
             ...parent::share($request),
+            'csrf_token' => fn () => csrf_token(),
             'auth' => [
                 'user' => $user,
+                'todaySchedule' => $todaySchedule,
+                'todayAttendance' => $todayAttendance,
             ],
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),

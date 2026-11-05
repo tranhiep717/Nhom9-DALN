@@ -16,9 +16,10 @@ import {
     UserCheck,
     Loader2
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import axios from 'axios';
-import { adminNavItems } from './Dashboard';
+import { adminNavItems } from '@/constants/navigation';
+import AdminPagination from '@/Components/AdminPagination';
 
 interface SpecialtyItem {
     MaChuyenKhoa: number;
@@ -56,10 +57,18 @@ export default function AdminDoctors({ auth, doctors = [], chuyenKhoas = [], fil
     const [statusFilter, setStatusFilter] = useState(filters.status || '');
 
     const [doctorList, setDoctorList] = useState<DoctorItem[]>(doctors);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
+
     const [modalOpen, setModalOpen] = useState(false);
     const [editingDoctor, setEditingDoctor] = useState<DoctorItem | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+    const paginatedDoctors = useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return doctorList.slice(start, start + pageSize);
+    }, [doctorList, currentPage, pageSize]);
 
     const [formData, setFormData] = useState({
         HoTen: '',
@@ -290,7 +299,14 @@ export default function AdminDoctors({ auth, doctors = [], chuyenKhoas = [], fil
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 text-xs">
-                                {doctorList.map((doc) => (
+                                {paginatedDoctors.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                                            Không tìm thấy bác sĩ nào phù hợp.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    paginatedDoctors.map((doc) => (
                                     <tr key={doc.MaBacSi} className="hover:bg-slate-50/80 transition-colors">
                                         <td className="px-6 py-4 font-mono font-bold text-teal-700">
                                             #{doc.MaBacSi}
@@ -311,7 +327,7 @@ export default function AdminDoctors({ auth, doctors = [], chuyenKhoas = [], fil
                                         </td>
                                         <td className="px-6 py-4">
                                             <p className="text-slate-800 font-mono">{doc.SoDienThoai || '--'}</p>
-                                            <p className="text-slate-400 text-[11px] font-mono">{doc.EmailLienHe || '--'}</p>
+                                            <p className="text-slate-400 text-[11px] font-mono">{doc.EmailLienHe || (doc as any).tai_khoan?.Email || (doc as any).taiKhoan?.Email || '--'}</p>
                                         </td>
                                         <td className="px-6 py-4 text-center">
                                             <span className="font-bold text-slate-700">
@@ -342,10 +358,18 @@ export default function AdminDoctors({ auth, doctors = [], chuyenKhoas = [], fil
                                             </div>
                                         </td>
                                     </tr>
-                                ))}
+                                )))}
                             </tbody>
                         </table>
                     </div>
+
+                    <AdminPagination
+                        currentPage={currentPage}
+                        totalItems={doctorList.length}
+                        pageSize={pageSize}
+                        onPageChange={setCurrentPage}
+                        onPageSizeChange={setPageSize}
+                    />
                 </div>
             </div>
 

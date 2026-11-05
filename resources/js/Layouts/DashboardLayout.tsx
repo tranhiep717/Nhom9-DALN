@@ -5,16 +5,13 @@ import {
 import { useState, useRef, useEffect, PropsWithChildren } from 'react';
 import AiChatWidget from '@/Components/AiChatWidget';
 import NotificationDropdown from '@/Components/NotificationDropdown';
+import { RECEPTIONIST_NAV_ITEMS, DOCTOR_NAV_ITEMS, NavItem } from '@/constants/navigation';
 
-interface NavItem {
-    name: string;
-    href: string;
-    icon: React.ElementType;
-}
+export type { NavItem };
 
 interface DashboardLayoutProps {
     role: 'patient' | 'doctor' | 'receptionist' | 'admin' | 'cls';
-    navItems: NavItem[];
+    navItems?: NavItem[];
     user?: any;
     header?: React.ReactNode;
 }
@@ -25,6 +22,11 @@ export default function DashboardLayout({ role, navItems, user, header, children
     const dropdownRef = useRef<HTMLDivElement>(null);
     const { url, props } = usePage();
     const authUser = (props as any)?.auth?.user;
+
+    // Chuẩn hóa menu dùng chung cho Receptionist và Doctor
+    const effectiveNavItems = (navItems && navItems.length > 0)
+        ? navItems
+        : (role === 'doctor' ? DOCTOR_NAV_ITEMS : (role === 'receptionist' ? RECEPTIONIST_NAV_ITEMS : (navItems || [])));
 
     const defaultName = role === 'doctor' ? 'Bác sĩ chuyên khoa' : 
                         role === 'receptionist' ? 'Nhân viên lễ tân' : 
@@ -103,8 +105,15 @@ export default function DashboardLayout({ role, navItems, user, header, children
                 </div>
 
                 <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
-                    {navItems.map((item) => {
-                        const isActive = url.startsWith(item.href) && item.href !== '/' || (url === '/' && item.href === '/');
+                    {effectiveNavItems.map((item) => {
+                        const currentPath = url.split('?')[0];
+                        const isActive = 
+                            (item.href === '/' && currentPath === '/') ||
+                            (item.href !== '/' && (
+                                currentPath === item.href ||
+                                currentPath.startsWith(item.href + '/') ||
+                                (item.href === '/receptionist/payment' && currentPath.startsWith('/receptionist/invoices'))
+                            ));
                         return (
                             <Link
                                 key={item.name}

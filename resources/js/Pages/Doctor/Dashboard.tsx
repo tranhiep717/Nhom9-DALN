@@ -1,25 +1,46 @@
 import DashboardLayout from '@/Layouts/DashboardLayout';
+import QuickAttendanceCard from '@/Components/QuickAttendanceCard';
+import { DOCTOR_NAV_ITEMS } from '@/constants/navigation';
 import { Head, Link } from '@inertiajs/react';
 import { 
     Users, 
     CalendarClock, 
     CheckCircle2, 
     Clock,
-    LayoutDashboard,
-    Calendar,
-    UserCircle,
-    Activity
+    Activity,
+    Stethoscope,
+    ArrowRight,
+    User,
 } from 'lucide-react';
 
 interface QueueItem {
     id: string;
     visitId: number;
+    ticket?: string;
+    stt?: number | string;
+    shiftId?: number;
     name: string;
     age: number | string;
+    gender?: string;
     time: string;
     status: string;
     rawStatus: string;
     reason: string;
+    queueType?: string;
+}
+
+interface ActiveExamining {
+    id: string;
+    visitId: number;
+    ticket: string;
+    stt: number | string;
+    shiftId?: number;
+    name: string;
+    age: number | string;
+    gender?: string;
+    time: string;
+    reason: string;
+    status: string;
 }
 
 interface DoctorDashboardProps {
@@ -32,16 +53,10 @@ interface DoctorDashboardProps {
         completedVisits: number;
     };
     queue?: QueueItem[];
+    activeExamining?: ActiveExamining | null;
 }
 
-export default function DoctorDashboard({ auth, doctor, stats, queue = [] }: DoctorDashboardProps) {
-    const navItems = [
-        { name: 'Tổng quan', href: '/doctor/dashboard', icon: LayoutDashboard },
-        { name: 'Lịch làm việc', href: '/doctor/schedule', icon: Calendar },
-        { name: 'Danh sách chờ khám', href: '/doctor/examine', icon: Users },
-        { name: 'Khám bệnh & Kê đơn', href: '/doctor/examine', icon: Activity },
-    ];
-
+export default function DoctorDashboard({ auth, doctor, stats, queue = [], activeExamining }: DoctorDashboardProps) {
     const statCards = [
         { 
             title: 'Lịch khám hôm nay', 
@@ -62,7 +77,7 @@ export default function DoctorDashboard({ auth, doctor, stats, queue = [] }: Doc
         { 
             title: 'Lượt khám đang thực hiện', 
             value: stats?.inProgressVisits ?? 0, 
-            sub: `${stats?.completedVisits ?? 0} ca đã hoàn thành`,
+            sub: activeExamining ? `${activeExamining.name} (${activeExamining.ticket})` : 'Chưa có bệnh nhân',
             icon: Activity, 
             color: 'text-indigo-600', 
             bg: 'bg-indigo-100' 
@@ -83,13 +98,21 @@ export default function DoctorDashboard({ auth, doctor, stats, queue = [] }: Doc
     return (
         <DashboardLayout
             role="doctor"
-            navItems={navItems}
+            navItems={DOCTOR_NAV_ITEMS}
             user={{ name: doctorName, code: doctorCode }}
             header="Bàn làm việc Bác sĩ"
         >
             <Head title="Doctor Dashboard - SmartCare" />
 
             <div className="max-w-7xl mx-auto space-y-6">
+                {/* 0. Chấm công nhanh ca trực hôm nay */}
+                <QuickAttendanceCard
+                    rolePrefix="doctor"
+                    todaySchedule={auth?.todaySchedule}
+                    todayAttendance={auth?.todayAttendance}
+                />
+
+                {/* 1. Thẻ thống kê tổng quan */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
                     {statCards.map((stat, index) => (
                         <div key={index} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between">
@@ -102,18 +125,60 @@ export default function DoctorDashboard({ auth, doctor, stats, queue = [] }: Doc
                                     <stat.icon className={`w-6 h-6 ${stat.color}`} />
                                 </div>
                             </div>
-                            <p className="text-xs text-gray-400 mt-3 pt-3 border-t border-gray-50 font-medium">
+                            <p className="text-xs text-gray-400 mt-3 pt-3 border-t border-gray-50 font-medium truncate">
                                 {stat.sub}
                             </p>
                         </div>
                     ))}
                 </div>
 
+                {/* 2. Ca khám đang thực hiện (Nếu có - tách biệt rõ khỏi hàng chờ) */}
+                {activeExamining && (
+                    <div className="bg-gradient-to-r from-sky-50 via-indigo-50 to-white rounded-2xl border border-sky-200 p-5 shadow-sm">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="flex items-start gap-3.5">
+                                <div className="w-11 h-11 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 shadow-md">
+                                    <Stethoscope className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="px-2.5 py-0.5 bg-indigo-600 text-white rounded-full text-xs font-bold uppercase tracking-wider animate-pulse">
+                                            Đang khám tại phòng
+                                        </span>
+                                        <span className="font-mono font-bold text-sm text-gray-800 bg-white px-2 py-0.5 rounded border border-gray-200">
+                                            {activeExamining.ticket}
+                                        </span>
+                                        <span className="text-xs text-gray-500 font-mono">
+                                            STT: {activeExamining.stt}
+                                        </span>
+                                    </div>
+                                    <h4 className="text-lg font-bold text-gray-900 mt-1">
+                                        {activeExamining.name} <span className="text-sm font-normal text-gray-500">({activeExamining.gender}{activeExamining.age !== 'N/A' ? `, ${activeExamining.age} tuổi` : ''})</span>
+                                    </h4>
+                                    <p className="text-xs text-gray-600 mt-0.5">
+                                        <span className="font-semibold text-gray-700">Lý do/Triệu chứng:</span> {activeExamining.reason} &bull; <span className="font-semibold text-gray-700">Giờ vào khám:</span> {activeExamining.time}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="shrink-0">
+                                <Link
+                                    href={`/doctor/examine?visit_id=${activeExamining.visitId}`}
+                                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-hover text-white rounded-xl font-bold text-sm shadow-sm transition-all hover:shadow"
+                                >
+                                    <span>Tiếp tục khám bệnh</span>
+                                    <ArrowRight className="w-4 h-4" />
+                                </Link>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* 3. Bảng hàng chờ khám bệnh hôm nay (Tuân thủ FIFO ThoiGianVaoHang) */}
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                     <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                         <div>
-                            <h3 className="text-lg font-bold text-gray-900">Hàng chờ khám bệnh hôm nay</h3>
-                            <p className="text-xs text-slate-500 mt-0.5">Dữ liệu thời gian thực được đồng bộ trực tiếp từ phòng tiếp nhận</p>
+                            <h3 className="text-lg font-bold text-gray-900">Hàng chờ khám bệnh hôm nay ({queue.length} bệnh nhân)</h3>
+                            <p className="text-xs text-slate-500 mt-0.5">Thứ tự hàng đợi tuân thủ nguyên tắc FIFO theo thời gian tiếp nhận vào hàng (ThoiGianVaoHang tăng dần)</p>
                         </div>
                         <Link href="/doctor/examine" className="inline-flex items-center gap-1.5 text-primary hover:text-primary-hover font-bold text-sm bg-primary-light/60 px-3.5 py-1.5 rounded-xl transition-colors">
                             <span>Vào phòng khám</span>
@@ -124,10 +189,12 @@ export default function DoctorDashboard({ auth, doctor, stats, queue = [] }: Doc
                         <table className="w-full text-left text-sm whitespace-nowrap">
                             <thead className="bg-gray-50 border-b border-gray-100 text-gray-600">
                                 <tr>
-                                    <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Thời gian</th>
+                                    <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Thời gian vào hàng</th>
+                                    <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Số phiếu & STT</th>
                                     <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Mã BN</th>
                                     <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Họ và tên</th>
                                     <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Tuổi</th>
+                                    <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Phân loại</th>
                                     <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Triệu chứng / Lý do</th>
                                     <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Trạng thái</th>
                                     <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider text-right">Thao tác</th>
@@ -140,20 +207,41 @@ export default function DoctorDashboard({ auth, doctor, stats, queue = [] }: Doc
                                             <td className="px-6 py-4 font-medium text-gray-900">
                                                 <div className="flex items-center gap-2">
                                                     <Clock className="w-4 h-4 text-gray-400" />
-                                                    <span>{item.time}</span>
+                                                    <span className="font-mono font-semibold">{item.time}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col">
+                                                    <span className="font-mono font-bold text-xs text-primary bg-primary-light/40 px-2 py-0.5 rounded w-fit">
+                                                        {item.ticket || `#${item.visitId}`}
+                                                    </span>
+                                                    <span className="text-[10px] text-gray-500 font-mono mt-0.5">
+                                                        STT: {item.stt}
+                                                    </span>
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 text-gray-500 font-mono text-xs">{item.id}</td>
-                                            <td className="px-6 py-4 font-bold text-primary">{item.name}</td>
-                                            <td className="px-6 py-4 text-gray-600">{item.age}</td>
+                                            <td className="px-6 py-4 font-bold text-gray-900">{item.name}</td>
+                                            <td className="px-6 py-4 text-gray-600">
+                                                {item.age !== 'N/A' ? `${item.age} tuổi` : 'N/A'}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${
+                                                    item.queueType?.includes('P2')
+                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                        : item.queueType?.includes('P3')
+                                                        ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                                        : 'bg-gray-50 text-gray-600 border-gray-200'
+                                                }`}>
+                                                    {item.queueType}
+                                                </span>
+                                            </td>
                                             <td className="px-6 py-4 text-gray-600 max-w-[200px] truncate">{item.reason}</td>
                                             <td className="px-6 py-4">
                                                 <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                                    item.rawStatus === 'DANG_KHAM' 
-                                                        ? 'bg-indigo-100 text-indigo-700 animate-pulse' 
-                                                        : item.rawStatus === 'CHO_KHAM'
-                                                        ? 'bg-orange-100 text-orange-700'
-                                                        : 'bg-emerald-100 text-emerald-700'
+                                                    item.rawStatus === 'CHO_KHAM_LAI'
+                                                        ? 'bg-teal-100 text-teal-800 ring-1 ring-teal-400 font-bold'
+                                                        : 'bg-amber-100 text-amber-800'
                                                 }`}>
                                                     {item.status}
                                                 </span>
@@ -163,18 +251,18 @@ export default function DoctorDashboard({ auth, doctor, stats, queue = [] }: Doc
                                                     href={`/doctor/examine?visit_id=${item.visitId}`} 
                                                     className="inline-flex items-center justify-center px-3.5 py-1.5 border border-transparent text-xs font-bold rounded-xl text-white bg-primary hover:bg-primary-hover shadow-sm transition-all"
                                                 >
-                                                    {item.rawStatus === 'DANG_KHAM' ? 'Tiếp tục khám' : 'Khám ngay'}
+                                                    Khám ngay
                                                 </Link>
                                             </td>
                                         </tr>
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                                        <td colSpan={9} className="px-6 py-12 text-center text-slate-400">
                                             <div className="flex flex-col items-center justify-center gap-2">
                                                 <Users className="w-8 h-8 text-slate-300" />
-                                                <p className="font-medium text-slate-600">Hiện chưa có bệnh nhân nào trong hàng chờ hôm nay</p>
-                                                <p className="text-xs text-slate-400">Khi lễ tân tiếp nhận bệnh nhân, danh sách sẽ tự động hiển thị tại đây</p>
+                                                <p className="font-medium text-slate-600">Hiện không có bệnh nhân nào đang chờ khám</p>
+                                                <p className="text-xs text-slate-400">Khi lễ tân tiếp nhận bệnh nhân vào hàng đợi, danh sách sẽ tự động cập nhật</p>
                                             </div>
                                         </td>
                                     </tr>

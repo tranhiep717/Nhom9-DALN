@@ -93,6 +93,11 @@ class ThuocController extends Controller
             return response()->json(['success' => false, 'message' => 'Chỉ Quản trị viên mới có quyền thêm thuốc vào hệ thống.'], 403);
         }
 
+        // Tự động map GiaBan sang DonGia nếu gửi từ giao diện
+        if ($request->has('GiaBan') && !$request->has('DonGia')) {
+            $request->merge(['DonGia' => $request->input('GiaBan')]);
+        }
+
         $validated = $request->validate([
             'TenThuoc' => ['required', 'string', 'max:255', 'unique:thuoc,TenThuoc'],
             'HoatChat' => ['nullable', 'string', 'max:255'],
@@ -148,6 +153,11 @@ class ThuocController extends Controller
         $thuoc = Thuoc::find($id);
         if (!$thuoc) {
             return response()->json(['success' => false, 'message' => 'Không tìm thấy thuốc.'], 404);
+        }
+
+        // Tự động map GiaBan sang DonGia nếu gửi từ giao diện
+        if ($request->has('GiaBan') && !$request->has('DonGia')) {
+            $request->merge(['DonGia' => $request->input('GiaBan')]);
         }
 
         $validated = $request->validate([

@@ -17,9 +17,10 @@ import {
     EyeOff,
     Loader2
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import axios from 'axios';
-import { adminNavItems } from './Dashboard';
+import { adminNavItems } from '@/constants/navigation';
+import AdminPagination from '@/Components/AdminPagination';
 
 interface RoleItem {
     MaVaiTro: number;
@@ -53,10 +54,18 @@ export default function Accounts({ auth, users = [], roles = [], filters = {} }:
     const [statusFilter, setStatusFilter] = useState(filters.status || '');
 
     const [accountList, setAccountList] = useState<AccountItem[]>(users);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
+
     const [modalOpen, setModalOpen] = useState(false);
     const [editingAccount, setEditingAccount] = useState<AccountItem | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+    const paginatedAccounts = useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return accountList.slice(start, start + pageSize);
+    }, [accountList, currentPage, pageSize]);
 
     // Form state
     const [formData, setFormData] = useState({
@@ -300,7 +309,14 @@ export default function Accounts({ auth, users = [], roles = [], filters = {} }:
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 text-xs">
-                                {accountList.map((acc) => {
+                                {paginatedAccounts.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                                            Không tìm thấy tài khoản nào phù hợp.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    paginatedAccounts.map((acc) => {
                                     const isSelf = acc.MaTaiKhoan === currentAdminId;
                                     const isLocked = acc.TrangThai === 'KHOA';
 
@@ -368,10 +384,18 @@ export default function Accounts({ auth, users = [], roles = [], filters = {} }:
                                             </td>
                                         </tr>
                                     );
-                                })}
+                                }))}
                             </tbody>
                         </table>
                     </div>
+
+                    <AdminPagination
+                        currentPage={currentPage}
+                        totalItems={accountList.length}
+                        pageSize={pageSize}
+                        onPageChange={setCurrentPage}
+                        onPageSizeChange={setPageSize}
+                    />
                 </div>
             </div>
 

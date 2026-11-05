@@ -13,9 +13,10 @@ import {
     Tag,
     Loader2
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import axios from 'axios';
-import { adminNavItems } from './Dashboard';
+import { adminNavItems } from '@/constants/navigation';
+import AdminPagination from '@/Components/AdminPagination';
 
 interface MedicineItem {
     MaThuoc: number;
@@ -44,10 +45,18 @@ export default function AdminMedicines({ auth, medicines = [], filters = {} }: M
     const [statusFilter, setStatusFilter] = useState(filters.status || '');
 
     const [medList, setMedList] = useState<MedicineItem[]>(medicines);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
+
     const [modalOpen, setModalOpen] = useState(false);
     const [editingMed, setEditingMed] = useState<MedicineItem | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+    const paginatedMedicines = useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return medList.slice(start, start + pageSize);
+    }, [medList, currentPage, pageSize]);
 
     const [formData, setFormData] = useState({
         TenThuoc: '',
@@ -227,7 +236,14 @@ export default function AdminMedicines({ auth, medicines = [], filters = {} }: M
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 text-xs">
-                                {medList.map((med) => (
+                                {paginatedMedicines.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                                            Không tìm thấy loại thuốc nào phù hợp.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    paginatedMedicines.map((med) => (
                                     <tr key={med.MaThuoc} className="hover:bg-slate-50/80 transition-colors">
                                         <td className="px-6 py-4 font-mono font-bold text-teal-700">
                                             #{med.MaThuoc}
@@ -241,7 +257,7 @@ export default function AdminMedicines({ auth, medicines = [], filters = {} }: M
                                             <span className="text-slate-400 block text-[11px]">ĐVT: {med.DonViTinh || 'viên'}</span>
                                         </td>
                                         <td className="px-6 py-4 text-right font-mono font-bold text-slate-900">
-                                            {formatCurrency(med.GiaBan)}
+                                            {formatCurrency(med.GiaBan ?? (med as any).DonGia ?? 0)}
                                         </td>
                                         <td className="px-6 py-4 text-center">
                                             <span className={`inline-block px-2.5 py-0.5 rounded-full font-bold text-xs ${
@@ -251,7 +267,7 @@ export default function AdminMedicines({ auth, medicines = [], filters = {} }: M
                                             </span>
                                         </td>
                                         <td className="px-6 py-4">
-                                            {med.TrangThai === 'HOAT_DONG' ? (
+                                            {med.TrangThai === 'HOAT_DONG' || med.TrangThai === 'CON_HANG' ? (
                                                 <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800">Hoạt động</span>
                                             ) : (
                                                 <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-slate-100 text-slate-700">Ngừng dùng</span>
@@ -267,10 +283,18 @@ export default function AdminMedicines({ auth, medicines = [], filters = {} }: M
                                             </button>
                                         </td>
                                     </tr>
-                                ))}
+                                )))}
                             </tbody>
                         </table>
                     </div>
+
+                    <AdminPagination
+                        currentPage={currentPage}
+                        totalItems={medList.length}
+                        pageSize={pageSize}
+                        onPageChange={setCurrentPage}
+                        onPageSizeChange={setPageSize}
+                    />
                 </div>
             </div>
 

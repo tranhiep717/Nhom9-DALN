@@ -14,7 +14,7 @@ import {
     ChevronUp,
     Download
 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { patientNavItems } from './Dashboard';
 
 interface ChiTietHoaDonItem {
@@ -66,7 +66,56 @@ interface PatientBillingProps {
 }
 
 export default function Billing({ auth, invoices = [] }: PatientBillingProps) {
-    const [expandedInvoiceId, setExpandedInvoiceId] = useState<number | null>(invoices[0]?.MaHoaDon || null);
+    const asArray = <T,>(value: T | T[] | null | undefined): T[] => {
+        if (Array.isArray(value)) return value;
+        return value ? [value] : [];
+    };
+
+    const normalizeInvoiceItems = (items: any[] = []) => {
+        return items.map((item: any) => {
+            const name = item?.TenMuc ?? item?.NoiDung ?? item?.noi_dung ?? item?.chiDinhDichVu?.dichVu?.TenDichVu ?? item?.chiTietDonThuoc?.thuoc?.TenThuoc ?? 'Chi phí';
+            const category = item?.LoaiDichVu ?? item?.LoaiChiPhi ?? item?.loai_chi_phi ?? item?.chiDinhDichVu?.dichVu?.LoaiDichVu ?? 'KHAC';
+            const qty = Number(item?.SoLuong ?? item?.so_luong ?? 0);
+            const unitPrice = Number(item?.DonGia ?? item?.don_gia ?? 0);
+            const total = Number(item?.ThanhTien ?? item?.thanh_tien ?? (qty * unitPrice));
+
+            return {
+                ...item,
+                MaChiTiet: item?.MaChiTiet ?? item?.MaChiTietHoaDon ?? item?.ma_chi_tiet_hoa_don ?? 0,
+                TenMuc: name,
+                LoaiDichVu: category,
+                SoLuong: qty,
+                DonGia: unitPrice,
+                ThanhTien: total,
+            };
+        });
+    };
+
+    const normalizePayments = (items: any[] = []) => {
+        return items.map((pt: any) => ({
+            ...pt,
+            MaThanhToan: pt?.MaThanhToan ?? pt?.ma_thanh_toan ?? 0,
+            PhuongThuc: pt?.PhuongThuc ?? pt?.PhuongThucThanhToan ?? pt?.phuong_thuc_thanh_toan ?? 'KHAC',
+            NgayThanhToan: pt?.NgayThanhToan ?? pt?.ThoiGianThanhToan ?? pt?.thoi_gian_thanh_toan ?? pt?.NgayTao ?? null,
+        }));
+    };
+
+    const normalizedInvoices = useMemo(() => {
+        return (invoices || []).map((inv: any) => ({
+            ...inv,
+            luotKham: inv?.luotKham ?? inv?.luot_kham,
+            chiTietHoaDons: normalizeInvoiceItems(asArray(inv?.chiTietHoaDons ?? inv?.chi_tiet_hoa_dons)),
+            thanhToans: normalizePayments(asArray(inv?.thanhToans ?? inv?.thanh_toans)),
+            TongTien: Number(inv?.TongTien ?? inv?.tong_tien ?? 0),
+            BHYTChiTra: Number(inv?.BHYTChiTra ?? inv?.BaoHiemChiTra ?? inv?.bao_hiem_chi_tra ?? 0),
+            MienGiam: Number(inv?.MienGiam ?? inv?.GiamGia ?? inv?.giam_gia ?? 0),
+            BenhNhanChiTra: Number(inv?.BenhNhanChiTra ?? inv?.benh_nhan_chi_tra ?? 0),
+            DaThanhToan: Number(inv?.DaThanhToan ?? inv?.da_thanh_toan ?? 0),
+            ConLai: Number(inv?.ConLai ?? inv?.con_lai ?? 0),
+        }));
+    }, [invoices]);
+
+    const [expandedInvoiceId, setExpandedInvoiceId] = useState<number | null>(normalizedInvoices[0]?.MaHoaDon || null);
 
     const formatCurrency = (val?: number) => {
         return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val || 0);
@@ -117,9 +166,9 @@ export default function Billing({ auth, invoices = [] }: PatientBillingProps) {
     };
 
     // Tổng hợp số liệu công nợ toàn bộ
-    const totalBilled = invoices.reduce((acc, curr) => acc + Number(curr.BenhNhanChiTra || 0), 0);
-    const totalPaid = invoices.reduce((acc, curr) => acc + Number(curr.DaThanhToan || 0), 0);
-    const totalDebt = invoices.reduce((acc, curr) => {
+    const totalBilled = normalizedInvoices.reduce((acc, curr) => acc + Number(curr.BenhNhanChiTra || 0), 0);
+    const totalPaid = normalizedInvoices.reduce((acc, curr) => acc + Number(curr.DaThanhToan || 0), 0);
+    const totalDebt = normalizedInvoices.reduce((acc, curr) => {
         if (curr.TrangThai === 'DA_HUY') return acc;
         return acc + Math.max(0, Number(curr.BenhNhanChiTra || 0) - Number(curr.DaThanhToan || 0));
     }, 0);
@@ -149,7 +198,7 @@ export default function Billing({ auth, invoices = [] }: PatientBillingProps) {
                     <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
                         <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tổng viện phí phát sinh</p>
                         <p className="text-2xl font-black text-slate-900 mt-1">{formatCurrency(totalBilled)}</p>
-                        <p className="text-xs text-slate-400 mt-2">Tính trên {invoices.length} hóa đơn</p>
+                        <p className="text-xs text-slate-400 mt-2">Tính trên {normalizedInvoices.length} hóa đơn</p>
                     </div>
 
                     <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
@@ -174,9 +223,9 @@ export default function Billing({ auth, invoices = [] }: PatientBillingProps) {
                 </div>
 
                 {/* Danh sách các hóa đơn */}
-                {invoices.length > 0 ? (
+                {normalizedInvoices.length > 0 ? (
                     <div className="space-y-4">
-                        {invoices.map((inv) => {
+                        {normalizedInvoices.map((inv) => {
                             const isExpanded = expandedInvoiceId === inv.MaHoaDon;
                             const items = inv.chiTietHoaDons || [];
                             const payments = inv.thanhToans || [];
@@ -270,7 +319,7 @@ export default function Billing({ auth, invoices = [] }: PatientBillingProps) {
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y divide-slate-100">
-                                                            {items.map((it) => (
+                                                            {items.map((it: any) => (
                                                                 <tr key={it.MaChiTiet} className="hover:bg-slate-50/50">
                                                                     <td className="px-4 py-2.5 font-bold text-slate-800">{it.TenMuc}</td>
                                                                     <td className="px-4 py-2.5 text-slate-500">
@@ -297,7 +346,7 @@ export default function Billing({ auth, invoices = [] }: PatientBillingProps) {
 
                                                 {payments.length > 0 ? (
                                                     <div className="divide-y divide-slate-100">
-                                                        {payments.map((pt) => (
+                                                        {payments.map((pt: any) => (
                                                             <div key={pt.MaThanhToan} className="py-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
                                                                 <div className="space-y-0.5">
                                                                     <div className="flex items-center gap-2">

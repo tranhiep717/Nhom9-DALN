@@ -18,7 +18,7 @@ import {
     AlertCircle,
     Download
 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { patientNavItems } from './Dashboard';
 
 interface VisitRecord {
@@ -42,6 +42,8 @@ interface VisitRecord {
         ChanDoan?: string;
         HuongDieuTri?: string;
         LoiDan?: string;
+        LoiDanBacSi?: string;
+        loi_dan_bac_si?: string;
         NgayKham?: string;
     };
     donThuoc?: {
@@ -52,6 +54,8 @@ interface VisitRecord {
             MaChiTiet: number;
             SoLuong: number;
             CachDung?: string;
+            LieuDung?: string;
+            lieu_dung?: string;
             thuoc?: {
                 MaThuoc: number;
                 TenThuoc: string;
@@ -94,7 +98,37 @@ export default function MedicalHistory({ auth, visits = [], filters = {} }: Medi
     const [search, setSearch] = useState(filters.search || '');
     const [fromDate, setFromDate] = useState(filters.from_date || '');
     const [toDate, setToDate] = useState(filters.to_date || '');
-    const [expandedVisitId, setExpandedVisitId] = useState<number | null>(visits[0]?.MaLuotKham || null);
+
+    const asArray = <T,>(value: T | T[] | null | undefined): T[] => {
+        if (Array.isArray(value)) return value;
+        return value ? [value] : [];
+    };
+
+    const normalizeVisit = (visit: any): VisitRecord => {
+        const dt = visit?.donThuoc ?? visit?.don_thuoc;
+        const serviceList = asArray(visit?.chiDinhDichVus ?? visit?.chi_dinh_dich_vus).map((cd: any) => ({
+            ...cd,
+            dichVu: cd?.dichVu ?? cd?.dich_vu,
+            bacSi: cd?.bacSi ?? cd?.bac_si,
+        }));
+        const meds = asArray(dt?.chiTietDonThuocs ?? dt?.chi_tiet_don_thuocs).map((ct: any) => ({
+            ...ct,
+            CachDung: ct?.CachDung ?? ct?.LieuDung ?? ct?.lieu_dung ?? 'Theo chỉ định của bác sĩ',
+            thuoc: ct?.thuoc ?? ct?.thuoc_info ?? ct?.thuocInfo,
+        }));
+
+        return {
+            ...visit,
+            bacSi: visit?.bacSi ?? visit?.bac_si,
+            phieuKham: visit?.phieuKham ?? visit?.phieu_kham,
+            donThuoc: dt ? { ...dt, chiTietDonThuocs: meds } : undefined,
+            chiDinhDichVus: serviceList,
+            hoaDon: visit?.hoaDon ?? visit?.hoa_don,
+        };
+    };
+
+    const normalizedVisits = useMemo(() => (visits || []).map(normalizeVisit), [visits]);
+    const [expandedVisitId, setExpandedVisitId] = useState<number | null>(normalizedVisits[0]?.MaLuotKham || null);
 
     const handleFilter = (e: React.FormEvent) => {
         e.preventDefault();
@@ -218,9 +252,9 @@ export default function MedicalHistory({ auth, visits = [], filters = {} }: Medi
                 </form>
 
                 {/* Danh sách các đợt khám */}
-                {visits.length > 0 ? (
+                {normalizedVisits.length > 0 ? (
                     <div className="space-y-4">
-                        {visits.map((visit) => {
+                        {normalizedVisits.map((visit) => {
                             const isExpanded = expandedVisitId === visit.MaLuotKham;
                             const doc = visit.bacSi;
                             const spec = doc?.chuyenKhoa;
@@ -301,11 +335,11 @@ export default function MedicalHistory({ auth, visits = [], filters = {} }: Medi
                                                             </p>
                                                         </div>
                                                     )}
-                                                    {pk?.LoiDan && (
+                                                    {(pk?.LoiDan ?? pk?.LoiDanBacSi ?? pk?.loi_dan_bac_si) && (
                                                         <div className="md:col-span-2">
                                                             <span className="text-slate-400 block mb-1">Lời dặn của bác sĩ:</span>
                                                             <p className="text-amber-900 bg-amber-50/70 p-2.5 rounded-lg border border-amber-200/60">
-                                                                {pk.LoiDan}
+                                                                {pk?.LoiDan ?? pk?.LoiDanBacSi ?? pk?.loi_dan_bac_si}
                                                             </p>
                                                         </div>
                                                     )}
@@ -381,7 +415,7 @@ export default function MedicalHistory({ auth, visits = [], filters = {} }: Medi
                                                                             {ct.SoLuong} {ct.thuoc?.DonViTinh || 'viên'}
                                                                         </td>
                                                                         <td className="px-3 py-2 text-slate-600">
-                                                                            {ct.CachDung || 'Theo chỉ định của bác sĩ'}
+                                                                            {ct.CachDung ?? ct.LieuDung ?? ct.lieu_dung ?? 'Theo chỉ định của bác sĩ'}
                                                                         </td>
                                                                     </tr>
                                                                 ))}

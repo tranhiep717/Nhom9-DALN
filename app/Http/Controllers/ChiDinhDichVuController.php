@@ -299,13 +299,15 @@ class ChiDinhDichVuController extends Controller
                 ->count();
 
             if ($pendingCount === 0 && $luotKham && in_array($luotKham->TrangThai, ['CHO_KET_QUA', 'DANG_KHAM'])) {
-                $luotKham->update(['TrangThai' => 'CHO_KHAM_LAI']);
+                // TẤT CẢ DỊCH VỤ ĐÃ CÓ KẾT QUẢ:
+                // Theo chính sách Phase 5.3: KHÔNG tự động chuyển sang CHO_KHAM_LAI.
+                // Giữ nguyên trạng thái CHO_KET_QUA cho đến khi bệnh nhân thực sự quay lại và được tiếp nhận vào FIFO.
 
                 NotificationService::sendToDoctor(
                     $luotKham->MaBacSi,
                     'KHAM_BENH',
                     'Đã có kết quả cận lâm sàng',
-                    "Bệnh nhân {$tenBN} đã hoàn tất các chỉ định cận lâm sàng và đang chờ khám lại.",
+                    "Bệnh nhân {$tenBN} đã hoàn tất các chỉ định cận lâm sàng (chờ bệnh nhân quay lại phòng khám).",
                     "/doctor/examine?visit_id={$luotKham->MaLuotKham}"
                 );
 
@@ -313,7 +315,7 @@ class ChiDinhDichVuController extends Controller
                     $luotKham->MaBenhNhan,
                     'KHAM_BENH',
                     'Đã có kết quả cận lâm sàng',
-                    "Kết quả chỉ định của bạn đã có. Vui lòng quay lại phòng khám để bác sĩ kết luận.",
+                    "Kết quả chỉ định của bạn đã có. Vui lòng quay lại quầy/phòng khám để được tiếp nhận khám lại.",
                     "/appointments"
                 );
             }

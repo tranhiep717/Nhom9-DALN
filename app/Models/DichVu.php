@@ -15,6 +15,7 @@ class DichVu extends Model
     protected $fillable = [
         'TenDichVu',
         'DonGia',
+        'ApDungBHYT',
         'MoTa',
         'TrangThai',
     ];

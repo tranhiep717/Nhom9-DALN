@@ -23,4 +23,5 @@ class ChuyenKhoa extends Model
     {
         return $this->hasMany(BacSi::class, 'MaChuyenKhoa', 'MaChuyenKhoa');
     }
+
 }

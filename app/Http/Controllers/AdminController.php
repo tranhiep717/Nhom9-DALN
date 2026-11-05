@@ -395,10 +395,13 @@ class AdminController extends Controller
             'taiKhoan:MaTaiKhoan,TenDangNhap,Email,TrangThai',
             'lichHens.caKham.lichLamViec.bacSi',
             'luotKhams.bacSi.chuyenKhoa',
+            'luotKhams.nguoiTiepNhan:MaTaiKhoan,TenDangNhap,Email',
             'luotKhams.phieuKham',
             'luotKhams.donThuoc.chiTietDonThuocs.thuoc',
             'luotKhams.chiDinhDichVus.dichVu',
-            'luotKhams.hoaDon.thanhToans',
+            'luotKhams.chiDinhDichVus.nhanVienThucHien:MaTaiKhoan,TenDangNhap,Email',
+            'luotKhams.hoaDon.nguoiThu:MaTaiKhoan,TenDangNhap,Email',
+            'luotKhams.hoaDon.thanhToans.nguoiThu:MaTaiKhoan,TenDangNhap,Email',
         ])->find($id);
 
         if (!$patient) {
@@ -606,8 +609,10 @@ class AdminController extends Controller
         $query = HoaDon::query()->with([
             'luotKham.benhNhan:MaBenhNhan,HoTen,SoDienThoai',
             'luotKham.bacSi:MaBacSi,HoTen',
+            'luotKham.nguoiTiepNhan:MaTaiKhoan,TenDangNhap,Email',
             'chiTietHoaDons',
-            'thanhToans',
+            'thanhToans.nguoiThu:MaTaiKhoan,TenDangNhap,Email',
+            'nguoiThu:MaTaiKhoan,TenDangNhap,Email',
         ]);
 
         if ($search = $request->input('search')) {
@@ -727,5 +732,393 @@ class AdminController extends Controller
                 'to_date' => $toDate,
             ],
         ]);
+    }
+
+    /**
+     * BƯỚC 9: GIÁM SÁT CẬN LÂM SÀNG TOÀN VIỆN (Admin/ClsMonitor.tsx)
+     */
+    public function clsMonitorIndex(Request $request): InertiaResponse|JsonResponse
+    {
+        $query = \App\Models\ChiDinhDichVu::query()->with([
+            'dichVu',
+            'bacSi:MaBacSi,HoTen,HocVi,MaChuyenKhoa',
+            'bacSi.chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa',
+            'luotKham.benhNhan:MaBenhNhan,HoTen,SoDienThoai,NgaySinh,GioiTinh',
+            'nhanVienThucHien:MaTaiKhoan,TenDangNhap,Email',
+        ]);
+
+        if ($search = $request->input('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('MaChiDinh', $search)
+                  ->orWhereHas('luotKham.benhNhan', function ($bq) use ($search) {
+                      $bq->where('HoTen', 'like', "%{$search}%")
+                         ->orWhere('SoDienThoai', 'like', "%{$search}%");
+                  })
+                  ->orWhereHas('dichVu', function ($dq) use ($search) {
+                      $dq->where('TenDichVu', 'like', "%{$search}%");
+                  });
+            });
+        }
+
+        if ($status = $request->input('status')) {
+            if ($status === 'COMPLETED') {
+                $query->whereIn('TrangThai', ['HOAN_THANH', 'DA_CO_KET_QUA']);
+            } elseif ($status === 'PENDING') {
+                $query->whereIn('TrangThai', ['CHO_TIEP_NHAN', 'DA_TIEP_NHAN', 'CHO_THUC_HIEN']);
+            } else {
+                $query->where('TrangThai', $status);
+            }
+        }
+
+        if ($type = $request->input('type')) {
+            $query->whereHas('dichVu', function ($dq) use ($type) {
+                $dq->where('TenDichVu', 'like', "%{$type}%");
+            });
+        }
+
+        if ($date = $request->input('date')) {
+            $query->whereDate('NgayChiDinh', $date);
+        }
+
+        // Thống kê chuẩn theo dữ liệu thực tế MySQL
+        $totalOrders = \App\Models\ChiDinhDichVu::count();
+        $completedOrders = \App\Models\ChiDinhDichVu::whereIn('TrangThai', ['HOAN_THANH', 'DA_CO_KET_QUA'])->count();
+        $pendingOrders = \App\Models\ChiDinhDichVu::whereIn('TrangThai', ['CHO_TIEP_NHAN', 'DA_TIEP_NHAN', 'CHO_THUC_HIEN'])->count();
+        $processingOrders = \App\Models\ChiDinhDichVu::where('TrangThai', 'DANG_THUC_HIEN')->count();
+        $cancelledOrders = \App\Models\ChiDinhDichVu::where('TrangThai', 'DA_HUY')->count();
+
+        // Doanh thu CLS (tổng tiền các chỉ định đã thực hiện / đã có kết quả)
+        $totalRevenue = (float) \App\Models\ChiDinhDichVu::whereIn('TrangThai', ['HOAN_THANH', 'DA_CO_KET_QUA'])->sum('DonGia');
+
+        $stats = [
+            'total' => $totalOrders,
+            'completed' => $completedOrders,
+            'pending' => $pendingOrders,
+            'processing' => $processingOrders,
+            'cancelled' => $cancelledOrders,
+            'totalRevenue' => $totalRevenue,
+            'completionRate' => $totalOrders > 0 ? round(($completedOrders / $totalOrders) * 100, 1) : 0,
+        ];
+
+        // Biểu đồ 1: Top dịch vụ CLS được chỉ định nhiều nhất
+        $topServices = \App\Models\ChiDinhDichVu::join('dich_vu', 'chi_dinh_dich_vu.MaDichVu', '=', 'dich_vu.MaDichVu')
+            ->selectRaw('dich_vu.TenDichVu as name, count(*) as count, sum(chi_dinh_dich_vu.DonGia) as revenue')
+            ->groupBy('dich_vu.TenDichVu')
+            ->orderByDesc('count')
+            ->take(6)
+            ->get();
+
+        // Biểu đồ 2: Bác sĩ chỉ định nhiều nhất
+        $topDoctors = \App\Models\ChiDinhDichVu::join('bac_si', 'chi_dinh_dich_vu.MaBacSi', '=', 'bac_si.MaBacSi')
+            ->selectRaw('bac_si.HoTen as name, count(*) as count')
+            ->groupBy('bac_si.HoTen')
+            ->orderByDesc('count')
+            ->take(6)
+            ->get();
+
+        // Biểu đồ 3: Phân loại nhóm dịch vụ (Xét nghiệm, X-Quang, Siêu âm, Khác)
+        $byType = \App\Models\ChiDinhDichVu::join('dich_vu', 'chi_dinh_dich_vu.MaDichVu', '=', 'dich_vu.MaDichVu')
+            ->select('dich_vu.TenDichVu')
+            ->get()
+            ->groupBy(function ($item) {
+                $name = mb_strtolower($item->TenDichVu, 'UTF-8');
+                if (str_contains($name, 'xét nghiệm') || str_contains($name, 'máu') || str_contains($name, 'nước tiểu')) {
+                    return 'Xét nghiệm';
+                }
+                if (str_contains($name, 'x-quang') || str_contains($name, 'ct') || str_contains($name, 'mri')) {
+                    return 'Chẩn đoán hình ảnh';
+                }
+                if (str_contains($name, 'siêu âm')) {
+                    return 'Siêu âm';
+                }
+                return 'Khám & Thăm dò';
+            })
+            ->map(function ($group, $label) {
+                return [
+                    'name' => $label,
+                    'displayName' => $label,
+                    'value' => $group->count(),
+                ];
+            })
+            ->values();
+
+        // Biểu đồ 4: Phân bố trạng thái
+        $statusDistribution = [
+            ['name' => 'Đã có kết quả', 'value' => $completedOrders, 'color' => '#10B981'],
+            ['name' => 'Chờ tiếp nhận & làm', 'value' => $pendingOrders, 'color' => '#F59E0B'],
+            ['name' => 'Đang phân tích', 'value' => $processingOrders, 'color' => '#0284C7'],
+            ['name' => 'Đã hủy', 'value' => $cancelledOrders, 'color' => '#EF4444'],
+        ];
+
+        // Danh sách KTV CLS để lọc
+        $clsTechnicians = \App\Models\TaiKhoan::whereHas('vaiTro', function ($q) {
+            $q->where('TenVaiTro', 'NHAN_VIEN_CAN_LAM_SANG');
+        })->select('MaTaiKhoan', 'TenDangNhap', 'Email')->get();
+
+        // Phân trang danh sách chỉ định
+        $perPage = (int)$request->input('per_page', 15);
+        $orders = (clone $query)->orderBy('NgayChiDinh', 'desc')->paginate($perPage)->withQueryString();
+
+        $clsData = [
+            'orders' => $orders,
+            'stats' => $stats,
+            'charts' => [
+                'topServices' => $topServices,
+                'topDoctors' => $topDoctors,
+                'byType' => $byType,
+                'statusDistribution' => $statusDistribution,
+            ],
+            'technicians' => $clsTechnicians,
+            'filters' => $request->only(['search', 'status', 'type', 'date', 'per_page']),
+        ];
+
+        if ($request->expectsJson() || $request->is('api/*')) {
+            return response()->json([
+                'success' => true,
+                'data' => $clsData,
+            ]);
+        }
+
+        return Inertia::render('Admin/ClsMonitor', $clsData);
+    }
+
+    /**
+     * BÁO CÁO & GIÁM SÁT TIẾP ĐÓN - HÀNG CHỜ TOÀN VIỆN (ADMIN RECEPTION ANALYTICS)
+     */
+    public function receptionAnalytics(Request $request): InertiaResponse|JsonResponse
+    {
+        $timeRange = $request->input('time_range', 'all'); // 'all', 'today', 'week', 'month', 'custom'
+        $fromDate = $request->input('from_date');
+        $toDate = $request->input('to_date');
+        $specialtyId = $request->input('specialty_id');
+        $doctorId = $request->input('doctor_id');
+        $status = $request->input('status');
+        $source = $request->input('source'); // 'DAT_LICH' (P2) or 'TRUC_TIEP' (P3)
+        $search = $request->input('search');
+
+        // Query cơ sở
+        $baseQuery = LuotKham::query();
+
+        // Lọc theo mốc thời gian
+        if ($timeRange === 'today') {
+            $today = now()->toDateString();
+            $baseQuery->where(function ($q) use ($today) {
+                $q->whereDate('NgayKham', $today)->orWhereDate('ThoiGianTiepNhan', $today);
+            });
+        } elseif ($timeRange === 'week') {
+            $startOfWeek = now()->startOfWeek()->toDateString();
+            $endOfWeek = now()->endOfWeek()->toDateString();
+            $baseQuery->where(function ($q) use ($startOfWeek, $endOfWeek) {
+                $q->whereBetween('NgayKham', [$startOfWeek, $endOfWeek])
+                  ->orWhereBetween('ThoiGianTiepNhan', [$startOfWeek, $endOfWeek]);
+            });
+        } elseif ($timeRange === 'month') {
+            $startOfMonth = now()->startOfMonth()->toDateString();
+            $endOfMonth = now()->endOfMonth()->toDateString();
+            $baseQuery->where(function ($q) use ($startOfMonth, $endOfMonth) {
+                $q->whereBetween('NgayKham', [$startOfMonth, $endOfMonth])
+                  ->orWhereBetween('ThoiGianTiepNhan', [$startOfMonth, $endOfMonth]);
+            });
+        } elseif ($timeRange === 'custom' && ($fromDate || $toDate)) {
+            if ($fromDate && $toDate) {
+                $baseQuery->where(function ($q) use ($fromDate, $toDate) {
+                    $q->whereBetween('NgayKham', [$fromDate, $toDate])
+                      ->orWhereBetween('ThoiGianTiepNhan', [$fromDate, $toDate]);
+                });
+            } elseif ($fromDate) {
+                $baseQuery->where(function ($q) use ($fromDate) {
+                    $q->whereDate('NgayKham', '>=', $fromDate)
+                      ->orWhereDate('ThoiGianTiepNhan', '>=', $fromDate);
+                });
+            } elseif ($toDate) {
+                $baseQuery->where(function ($q) use ($toDate) {
+                    $q->whereDate('NgayKham', '<=', $toDate)
+                      ->orWhereDate('ThoiGianTiepNhan', '<=', $toDate);
+                });
+            }
+        }
+        // nếu $timeRange === 'all', không lọc ngày => hiển thị trọn vẹn 275 ca thực tế
+
+        if ($specialtyId) {
+            $baseQuery->where('MaChuyenKhoa', $specialtyId);
+        }
+        if ($doctorId) {
+            $baseQuery->where('MaBacSi', $doctorId);
+        }
+        if ($status) {
+            $baseQuery->where('TrangThai', $status);
+        }
+        if ($source) {
+            if ($source === 'DAT_LICH') {
+                $baseQuery->where(function ($q) {
+                    $q->where('LoaiHangDoi', 'DAT_LICH')->orWhereNotNull('MaLichHen');
+                });
+            } elseif ($source === 'TRUC_TIEP') {
+                $baseQuery->where(function ($q) {
+                    $q->where('LoaiHangDoi', 'TRUC_TIEP')->whereNull('MaLichHen');
+                });
+            }
+        }
+        if ($search) {
+            $baseQuery->where(function ($q) use ($search) {
+                $q->where('SoPhieu', 'like', "%{$search}%")
+                  ->orWhereHas('benhNhan', function ($bq) use ($search) {
+                      $bq->where('HoTen', 'like', "%{$search}%")
+                         ->orWhere('SoDienThoai', 'like', "%{$search}%");
+                  });
+            });
+        }
+
+        // Tính toán các chỉ số KPI
+        $allMatching = (clone $baseQuery)->get();
+        $totalVisits = $allMatching->count();
+        $completedCount = $allMatching->where('TrangThai', 'HOAN_THANH')->count();
+        $activeCount = $allMatching->whereIn('TrangThai', ['CHO_KHAM', 'DANG_KHAM', 'CHO_KET_QUA', 'CHO_KHAM_LAI'])->count();
+        $cancelledCount = $allMatching->where('TrangThai', 'BO_LUOT')->count();
+        $bookedCount = $allMatching->filter(fn($v) => $v->LoaiHangDoi === 'DAT_LICH' || !empty($v->MaLichHen))->count();
+        $walkinCount = $allMatching->filter(fn($v) => $v->LoaiHangDoi === 'TRUC_TIEP' && empty($v->MaLichHen))->count();
+
+        $completionRate = $totalVisits > 0 ? round(($completedCount / $totalVisits) * 100, 1) : 0;
+        $dropRate = $totalVisits > 0 ? round(($cancelledCount / $totalVisits) * 100, 1) : 0;
+        $bookedRate = $totalVisits > 0 ? round(($bookedCount / $totalVisits) * 100, 1) : 0;
+
+        $kpi = [
+            'totalVisits' => $totalVisits,
+            'completedCount' => $completedCount,
+            'activeCount' => $activeCount,
+            'cancelledCount' => $cancelledCount,
+            'bookedCount' => $bookedCount,
+            'walkinCount' => $walkinCount,
+            'completionRate' => $completionRate,
+            'dropRate' => $dropRate,
+            'bookedRate' => $bookedRate,
+        ];
+
+        // Biểu đồ 1: Theo Chuyên khoa
+        $specialtiesMap = ChuyenKhoa::pluck('TenChuyenKhoa', 'MaChuyenKhoa')->toArray();
+        $bySpecialty = $allMatching->groupBy('MaChuyenKhoa')->map(function ($group, $key) use ($specialtiesMap) {
+            return [
+                'name' => $specialtiesMap[$key] ?? 'Khoa #' . $key,
+                'count' => $group->count(),
+            ];
+        })->sortByDesc('count')->values()->take(8);
+
+        // Biểu đồ 2: Top Bác sĩ
+        $doctorsMap = BacSi::pluck('HoTen', 'MaBacSi')->toArray();
+        $byDoctor = $allMatching->groupBy('MaBacSi')->map(function ($group, $key) use ($doctorsMap) {
+            return [
+                'name' => $doctorsMap[$key] ?? 'Bác sĩ #' . $key,
+                'count' => $group->count(),
+            ];
+        })->sortByDesc('count')->values()->take(8);
+
+        // Biểu đồ 3: Phân bố theo Ca khám
+        $caKhams = CaKham::whereIn('MaCaKham', $allMatching->pluck('MaCaKham')->unique())->get()->keyBy('MaCaKham');
+        $byShift = $allMatching->groupBy(function ($item) use ($caKhams) {
+            $ck = $caKhams[$item->MaCaKham] ?? null;
+            if (!$ck) return 'Ca chung';
+            $hour = (int)substr($ck->GioBatDau, 0, 2);
+            if ($hour < 12) return 'Ca sáng (07h-12h)';
+            if ($hour < 17) return 'Ca chiều (13h-17h)';
+            return 'Ca tối (17h-21h)';
+        })->map(function ($group, $label) {
+            return [
+                'name' => $label,
+                'count' => $group->count(),
+            ];
+        })->values();
+
+        // Biểu đồ 4: Phân bố Nguồn tiếp đón
+        $sourceDistribution = [
+            ['name' => 'P2 Đặt hẹn trước', 'value' => $bookedCount, 'color' => '#10B981'],
+            ['name' => 'P3 Trực tiếp vãng lai', 'value' => $walkinCount, 'color' => '#6366F1'],
+        ];
+
+        // Biểu đồ 5: Phân bố Trạng thái
+        $statusDistribution = [
+            ['name' => 'Chờ khám', 'value' => $allMatching->where('TrangThai', 'CHO_KHAM')->count(), 'color' => '#F59E0B'],
+            ['name' => 'Đang khám', 'value' => $allMatching->where('TrangThai', 'DANG_KHAM')->count(), 'color' => '#0284C7'],
+            ['name' => 'Chờ KQ CLS', 'value' => $allMatching->where('TrangThai', 'CHO_KET_QUA')->count(), 'color' => '#EAB308'],
+            ['name' => 'Chờ khám lại', 'value' => $allMatching->where('TrangThai', 'CHO_KHAM_LAI')->count(), 'color' => '#0D9488'],
+            ['name' => 'Hoàn thành', 'value' => $completedCount, 'color' => '#10B981'],
+            ['name' => 'Bỏ lượt', 'value' => $cancelledCount, 'color' => '#EF4444'],
+        ];
+
+        // Danh sách lượt khám phân trang cho Bảng Đối soát & Truy vết
+        $perPage = (int)$request->input('per_page', 10);
+        if (!in_array($perPage, [10, 20, 50])) {
+            $perPage = 10;
+        }
+
+        $visits = (clone $baseQuery)->with([
+            'benhNhan:MaBenhNhan,HoTen,SoDienThoai,GioiTinh,NgaySinh',
+            'bacSi:MaBacSi,HoTen,HocVi,MaChuyenKhoa',
+            'bacSi.chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa',
+            'chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa',
+            'nguoiTiepNhan:MaTaiKhoan,TenDangNhap,Email',
+            'caKham:MaCaKham,GioBatDau,GioKetThuc',
+        ])
+        ->orderBy('MaLuotKham', 'desc')
+        ->paginate($perPage)
+        ->withQueryString();
+
+        // Danh mục dropdown
+        $specialties = ChuyenKhoa::select('MaChuyenKhoa', 'TenChuyenKhoa')->get();
+        $doctors = BacSi::where('TrangThai', 'HOAT_DONG')->select('MaBacSi', 'HoTen', 'HocVi')->get();
+
+        $data = [
+            'kpi' => $kpi,
+            'charts' => [
+                'bySpecialty' => $bySpecialty,
+                'byDoctor' => $byDoctor,
+                'byShift' => $byShift,
+                'sourceDistribution' => $sourceDistribution,
+                'statusDistribution' => $statusDistribution,
+            ],
+            'visits' => $visits,
+            'specialties' => $specialties,
+            'doctors' => $doctors,
+            'filters' => [
+                'time_range' => $timeRange,
+                'from_date' => $fromDate,
+                'to_date' => $toDate,
+                'specialty_id' => $specialtyId ? (int)$specialtyId : null,
+                'doctor_id' => $doctorId ? (int)$doctorId : null,
+                'status' => $status,
+                'source' => $source,
+                'search' => $search,
+                'per_page' => $perPage,
+            ],
+        ];
+
+        if ($request->expectsJson() || $request->is('api/*')) {
+            return response()->json(['success' => true, 'data' => $data]);
+        }
+
+        return Inertia::render('Admin/ReceptionAnalytics', $data);
+    }
+
+    /**
+     * Bàn tiếp đón Lễ tân dành riêng cho Quản trị viên
+     */
+    public function receptionIndex(Request $request): InertiaResponse|JsonResponse
+    {
+        $data = app(LichHenController::class)->getReceptionistDashboardData($request);
+        if ($request->expectsJson() || $request->is('api/*')) {
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+            ]);
+        }
+        return Inertia::render('Admin/Reception', $data);
+    }
+
+    /**
+     * Quản lý Hàng chờ & Gọi số dành riêng cho Quản trị viên
+     */
+    public function queueIndex(Request $request): InertiaResponse
+    {
+        $data = app(LichHenController::class)->getQueueData($request);
+        return Inertia::render('Admin/Queue', $data);
     }
 }

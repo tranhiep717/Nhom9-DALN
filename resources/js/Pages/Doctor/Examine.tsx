@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import DashboardLayout from '@/Layouts/DashboardLayout';
+import { DOCTOR_NAV_ITEMS } from '@/constants/navigation';
 import { Head, router, usePage } from '@inertiajs/react';
 import { 
     Calendar,
@@ -34,7 +35,10 @@ import {
     Eye,
     Info,
     Sparkles,
-    CheckSquare
+    CheckSquare,
+    Megaphone,
+    ChevronLeft,
+    ChevronRight
 } from 'lucide-react';
 
 interface BenhNhan {
@@ -69,6 +73,7 @@ interface Thuoc {
     DonViTinh: string;
     DangBaoChe?: string;
     DonGia: number | string;
+    ApDungBHYT?: boolean;
     SoLuongTon: number;
     HuongDanSuDung?: string;
 }
@@ -102,6 +107,7 @@ interface DichVu {
     MaDichVu: number;
     TenDichVu: string;
     DonGia: number | string;
+    ApDungBHYT?: boolean;
     MoTa?: string;
 }
 
@@ -129,6 +135,8 @@ interface ChiDinhDichVu {
         Email?: string;
         HoTen?: string;
     };
+    call_count?: number;
+    can_skip?: boolean;
     bacSi?: {
         MaBacSi: number;
         HoTen: string;
@@ -139,11 +147,30 @@ interface LuotKham {
     MaLuotKham: number;
     MaBenhNhan: number;
     MaBacSi: number;
+    MaLichHen?: number | null;
     ThoiGianTiepNhan: string;
     ThoiGianBatDauKham?: string;
     ThoiGianKetThucKham?: string;
     TrangThai: string;
     GhiChu?: string;
+    SoPhieu?: string;
+    STTTrongNgay?: number;
+    LoaiHangDoi?: 'DAT_LICH' | 'TRUC_TIEP';
+    MucUuTien?: number;
+    NgayKham?: string;
+    MaChuyenKhoa?: number;
+    MaCaKham?: number;
+    ThoiGianVaoHang?: string;
+    ThoiGianGoiKham?: string;
+    chuyenKhoa?: {
+        MaChuyenKhoa: number;
+        TenChuyenKhoa: string;
+    };
+    caKham?: {
+        MaCaKham: number;
+        GioBatDau: string;
+        GioKetThuc: string;
+    };
     benhNhan?: BenhNhan;
     lichHen?: {
         MaLichHen: number;
@@ -153,6 +180,8 @@ interface LuotKham {
     phieuKham?: PhieuKham;
     donThuoc?: DonThuoc;
     chiDinhDichVus?: ChiDinhDichVu[];
+    call_count?: number;
+    can_skip?: boolean;
     bacSi?: {
         MaBacSi: number;
         HoTen: string;
@@ -160,16 +189,37 @@ interface LuotKham {
     };
 }
 
+export interface PaginatedData<T> {
+    data: T[];
+    current_page: number;
+    first_page_url: string;
+    from: number | null;
+    last_page: number;
+    links: Array<{
+        url: string | null;
+        label: string;
+        active: boolean;
+    }>;
+    next_page_url: string | null;
+    path: string;
+    per_page: number;
+    prev_page_url: string | null;
+    to: number | null;
+    total: number;
+}
+
 interface Props {
     auth: any;
-    visits: LuotKham[];
+    visits: PaginatedData<LuotKham> | LuotKham[];
     selectedVisit?: LuotKham | null;
     patientHistory?: LuotKham[];
     availableMedicines: Thuoc[];
     availableServices: DichVu[];
+    doctorShifts?: any[];
     stats: {
         totalToday: number;
         waiting: number;
+        waitingInitial?: number;
         examining: number;
         waitingCls?: number;
         waitingReExam?: number;
@@ -179,17 +229,22 @@ interface Props {
         date?: string;
         status?: string;
         search?: string;
+        shift_id?: number;
+        specialty_id?: number;
         visit_id?: number;
+        per_page?: number;
+        page?: number;
     };
 }
 
 export default function DoctorExamine({
     auth,
-    visits: rawVisits = [],
+    visits: rawVisits,
     selectedVisit: rawInitialSelectedVisit,
     patientHistory: rawPatientHistory = [],
     availableMedicines = [],
     availableServices = [],
+    doctorShifts = [],
     stats = { totalToday: 0, waiting: 0, examining: 0, waitingCls: 0, waitingReExam: 0, completed: 0 },
     filters = {}
 }: Props) {
@@ -221,29 +276,49 @@ export default function DoctorExamine({
         };
     };
 
-    const visits = useMemo(() => rawVisits.map(normalizeVisit), [rawVisits]);
+    const visitsList = useMemo(() => {
+        if (!rawVisits) return [];
+        const list = Array.isArray(rawVisits) ? rawVisits : (rawVisits.data || []);
+        return list.map(normalizeVisit);
+    }, [rawVisits]);
+
+    const pagination = useMemo(() => {
+        if (!rawVisits || Array.isArray(rawVisits)) {
+            return {
+                current_page: 1,
+                last_page: 1,
+                from: visitsList.length > 0 ? 1 : 0,
+                to: visitsList.length,
+                total: visitsList.length,
+                per_page: 10,
+            };
+        }
+        return {
+            current_page: rawVisits.current_page || 1,
+            last_page: rawVisits.last_page || 1,
+            from: rawVisits.from,
+            to: rawVisits.to,
+            total: rawVisits.total ?? 0,
+            per_page: rawVisits.per_page || 10,
+        };
+    }, [rawVisits, visitsList.length]);
+
     const initialSelectedVisit = useMemo(() => rawInitialSelectedVisit ? normalizeVisit(rawInitialSelectedVisit) : null, [rawInitialSelectedVisit]);
     const patientHistory = useMemo(() => rawPatientHistory.map(normalizeVisit), [rawPatientHistory]);
 
-    const navItems = [
-        { name: 'Tổng quan', href: '/doctor/dashboard', icon: LayoutDashboard },
-        { name: 'Lịch làm việc', href: '/doctor/schedule', icon: Calendar },
-        { name: 'Khám bệnh', href: '/doctor/examine', icon: Stethoscope },
-        { name: 'Bệnh nhân của tôi', href: '/doctor/patients', icon: UserCircle },
-        { name: 'Thống kê', href: '/doctor/stats', icon: Activity },
-    ];
+    const navItems = DOCTOR_NAV_ITEMS;
 
     // Local selected visit
     const [selectedVisitId, setSelectedVisitId] = useState<number | null>(
-        initialSelectedVisit?.MaLuotKham ?? (visits.length > 0 ? visits[0].MaLuotKham : null)
+        initialSelectedVisit?.MaLuotKham ?? (visitsList.length > 0 ? visitsList[0].MaLuotKham : null)
     );
 
     const activeVisit = useMemo(() => {
         if (initialSelectedVisit && initialSelectedVisit.MaLuotKham === selectedVisitId) {
             return initialSelectedVisit;
         }
-        return visits.find(v => v.MaLuotKham === selectedVisitId) || initialSelectedVisit || null;
-    }, [visits, selectedVisitId, initialSelectedVisit]);
+        return visitsList.find(v => v.MaLuotKham === selectedVisitId) || initialSelectedVisit || null;
+    }, [visitsList, selectedVisitId, initialSelectedVisit]);
 
     // Active Tab: 'clinical' (Khám bệnh & Cận lâm sàng) hoặc 'prescriptions' (Danh mục thuốc & Kê đơn)
     const [activeTab, setActiveTab] = useState<'clinical' | 'prescriptions'>('clinical');
@@ -251,7 +326,9 @@ export default function DoctorExamine({
     // Filter states
     const [filterDate, setFilterDate] = useState<string>(filters.date || '');
     const [filterStatus, setFilterStatus] = useState<string>(filters.status || '');
+    const [filterShift, setFilterShift] = useState<string>(filters.shift_id ? String(filters.shift_id) : '');
     const [searchQuery, setSearchQuery] = useState<string>(filters.search || '');
+    const [perPage, setPerPage] = useState<number>(filters.per_page || pagination.per_page || 10);
 
     // Form: Phiếu khám 2 giai đoạn (Khám ban đầu và Kết luận sau CLS)
     const [phieuKhamForm, setPhieuKhamForm] = useState({
@@ -371,12 +448,15 @@ export default function DoctorExamine({
         return Math.abs(ageDt.getUTCFullYear() - 1970);
     };
 
-    // Áp dụng bộ lọc hàng chờ
+    // Áp dụng bộ lọc hàng chờ (reset về trang 1 khi lọc)
     const handleApplyFilter = () => {
         router.get('/doctor/examine', {
             date: filterDate || undefined,
             status: filterStatus || undefined,
+            shift_id: filterShift || undefined,
             search: searchQuery || undefined,
+            per_page: perPage,
+            page: 1,
         }, {
             preserveState: true,
             preserveScroll: true,
@@ -387,8 +467,42 @@ export default function DoctorExamine({
     const handleResetFilter = () => {
         setFilterDate('');
         setFilterStatus('');
+        setFilterShift('');
         setSearchQuery('');
-        router.get('/doctor/examine', {}, {
+        setPerPage(10);
+        router.get('/doctor/examine', { per_page: 10, page: 1 }, {
+            preserveState: true,
+            preserveScroll: true,
+        });
+    };
+
+    const handlePageChange = (newPage: number) => {
+        if (newPage < 1 || newPage > pagination.last_page || newPage === pagination.current_page) return;
+        router.get('/doctor/examine', {
+            date: filterDate || undefined,
+            status: filterStatus || undefined,
+            shift_id: filterShift || undefined,
+            search: searchQuery || undefined,
+            visit_id: activeVisit?.MaLuotKham,
+            per_page: perPage,
+            page: newPage,
+        }, {
+            preserveState: true,
+            preserveScroll: true,
+        });
+    };
+
+    const handlePerPageChange = (newPerPage: number) => {
+        setPerPage(newPerPage);
+        router.get('/doctor/examine', {
+            date: filterDate || undefined,
+            status: filterStatus || undefined,
+            shift_id: filterShift || undefined,
+            search: searchQuery || undefined,
+            visit_id: activeVisit?.MaLuotKham,
+            per_page: newPerPage,
+            page: 1,
+        }, {
             preserveState: true,
             preserveScroll: true,
         });
@@ -416,6 +530,85 @@ export default function DoctorExamine({
         setLoadingAction('start');
         router.post(`/doctor/visits/${activeVisit.MaLuotKham}/start`, {}, {
             preserveState: true,
+            preserveScroll: true,
+            onFinish: () => setLoadingAction(null),
+        });
+    };
+
+    // Gọi bệnh nhân tiếp theo từ hàng đợi Hybrid Queue (FIFO chung theo thời gian vào hàng)
+    const handleCallNextPatient = () => {
+        const activeExamining = visitsList.find(v => v.TrangThai === 'DANG_KHAM');
+        if (activeExamining) {
+            alert(`Bác sĩ đang có ca khám #${activeExamining.MaLuotKham} (${activeExamining.benhNhan?.HoTen}) chưa hoàn tất. Vui lòng hoàn thành ca khám hoặc chuyển sang cận lâm sàng trước khi gọi bệnh nhân tiếp theo.`);
+            return;
+        }
+
+        setLoadingAction('callNext');
+        router.post('/doctor/queue/call-next', {
+            MaCaKham: filterShift ? Number(filterShift) : undefined,
+        }, {
+            preserveState: false,
+            preserveScroll: true,
+            onSuccess: (page: any) => {
+                const flash = page?.props?.flash;
+                const successMsg = flash?.success;
+                if (successMsg && 'speechSynthesis' in window) {
+                    const utterance = new SpeechSynthesisUtterance(successMsg);
+                    utterance.lang = 'vi-VN';
+                    window.speechSynthesis.speak(utterance);
+                }
+            },
+            onFinish: () => setLoadingAction(null),
+        });
+    };
+
+    // Phát loa gọi bệnh nhân và ghi vết lượt gọi (Call history chống trùng lặp)
+    const handleRecordCall = (v: LuotKham, e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        setLoadingAction(`call_${v.MaLuotKham}`);
+        const name = v.benhNhan?.HoTen || 'Bệnh nhân';
+        const ticket = v.SoPhieu ? `số phiếu ${v.SoPhieu}` : '';
+        if ('speechSynthesis' in window) {
+            const utterance = new SpeechSynthesisUtterance(`Mời bệnh nhân ${name}, ${ticket}, vào phòng khám`);
+            utterance.lang = 'vi-VN';
+            window.speechSynthesis.speak(utterance);
+        }
+        const token = (typeof crypto !== 'undefined' && crypto.randomUUID) 
+            ? crypto.randomUUID() 
+            : `call_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+        router.post('/doctor/queue/call-speaker', {
+            MaLuotKham: v.MaLuotKham,
+            Token: token,
+        }, {
+            preserveScroll: true,
+            onFinish: () => setLoadingAction(null),
+        });
+    };
+
+    // Xác nhận bỏ lượt thủ công sau khi đã phát loa đủ 3 lần
+    const handleSkipPatient = (v: LuotKham, e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        if (!confirm(`Xác nhận bỏ lượt cho bệnh nhân ${v.benhNhan?.HoTen || ''} (Số phiếu: ${v.SoPhieu || `#${v.MaLuotKham}`}) sau 3 lần gọi không có mặt?`)) {
+            return;
+        }
+        setLoadingAction(`skip_${v.MaLuotKham}`);
+        router.post('/doctor/queue/skip-patient', {
+            MaLuotKham: v.MaLuotKham,
+            LyDo: 'Gọi 3 lần không có mặt',
+        }, {
+            preserveScroll: true,
+            onFinish: () => setLoadingAction(null),
+        });
+    };
+
+    // Tiếp nhận bệnh nhân quay lại sau cận lâm sàng (CLS Return)
+    const handleRecordClsReturn = (v: LuotKham, e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        setLoadingAction(`cls_return_${v.MaLuotKham}`);
+        router.post('/doctor/queue/cls-return', {
+            MaLuotKham: v.MaLuotKham,
+        }, {
             preserveScroll: true,
             onFinish: () => setLoadingAction(null),
         });
@@ -760,11 +953,11 @@ export default function DoctorExamine({
                     </div>
                 )}
 
-                {/* 2. Thống kê nhanh hôm nay */}
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                {/* 2. Thống kê nhanh hôm nay - Phân rã trạng thái độc lập, khớp 100% với CSDL */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                     <div className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
                         <div>
-                            <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Tổng lượt khám</p>
+                            <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Tổng tiếp nhận</p>
                             <p className="text-xl font-bold text-gray-900 mt-0.5">{stats.totalToday}</p>
                         </div>
                         <div className="w-9 h-9 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
@@ -774,8 +967,10 @@ export default function DoctorExamine({
 
                     <div className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
                         <div>
-                            <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Chờ khám</p>
-                            <p className="text-xl font-bold text-amber-600 mt-0.5">{stats.waiting}</p>
+                            <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Chờ khám lần đầu</p>
+                            <p className="text-xl font-bold text-amber-600 mt-0.5">
+                                {stats.waitingInitial ?? (stats.waiting - (stats.waitingReExam || 0))}
+                            </p>
                         </div>
                         <div className="w-9 h-9 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center">
                             <Clock className="w-5 h-5" />
@@ -794,7 +989,17 @@ export default function DoctorExamine({
 
                     <div className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
                         <div>
-                            <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Chờ khám lại (CLS)</p>
+                            <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Đang làm CLS</p>
+                            <p className="text-xl font-bold text-purple-600 mt-0.5">{stats.waitingCls ?? 0}</p>
+                        </div>
+                        <div className="w-9 h-9 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center">
+                            <FlaskConical className="w-5 h-5" />
+                        </div>
+                    </div>
+
+                    <div className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Chờ khám lại CLS</p>
                             <p className="text-xl font-bold text-teal-600 mt-0.5">{stats.waitingReExam ?? 0}</p>
                         </div>
                         <div className="w-9 h-9 bg-teal-50 text-teal-600 rounded-xl flex items-center justify-center">
@@ -802,7 +1007,7 @@ export default function DoctorExamine({
                         </div>
                     </div>
 
-                    <div className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between col-span-2 lg:col-span-1">
+                    <div className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
                         <div>
                             <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Đã hoàn thành</p>
                             <p className="text-xl font-bold text-emerald-600 mt-0.5">{stats.completed}</p>
@@ -820,7 +1025,7 @@ export default function DoctorExamine({
                             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
                             <input
                                 type="text"
-                                placeholder="Tìm theo tên hoặc SĐT bệnh nhân..."
+                                placeholder="Tìm theo tên, SĐT, mã BN (BNxxx) hoặc số phiếu..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleApplyFilter()}
@@ -852,6 +1057,23 @@ export default function DoctorExamine({
                             </select>
                         </div>
 
+                        {doctorShifts && doctorShifts.length > 0 && (
+                            <div className="w-full sm:w-auto">
+                                <select
+                                    value={filterShift}
+                                    onChange={(e) => setFilterShift(e.target.value)}
+                                    className="w-full text-sm rounded-xl border border-gray-200 py-2 px-3 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white"
+                                >
+                                    <option value="">Tất cả ca khám</option>
+                                    {doctorShifts.map((s: any) => (
+                                        <option key={s.MaCaKham} value={s.MaCaKham}>
+                                            Ca #{s.MaCaKham} ({s.GioBatDau?.substring(0, 5)} - {s.GioKetThuc?.substring(0, 5)})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
                         <button
                             onClick={handleApplyFilter}
                             className="px-4 py-2 bg-primary text-white text-sm font-semibold rounded-xl hover:bg-primary-hover flex items-center gap-1.5 shadow-sm"
@@ -859,7 +1081,7 @@ export default function DoctorExamine({
                             <Filter className="w-4 h-4" /> Lọc
                         </button>
 
-                        {(filterDate || filterStatus || searchQuery) && (
+                        {(filterDate || filterStatus || filterShift || searchQuery) && (
                             <button
                                 onClick={handleResetFilter}
                                 className="px-3 py-2 text-gray-500 hover:text-gray-800 text-sm font-medium hover:bg-gray-100 rounded-xl flex items-center gap-1"
@@ -867,6 +1089,25 @@ export default function DoctorExamine({
                                 <RefreshCw className="w-4 h-4" /> Đặt lại
                             </button>
                         )}
+                    </div>
+
+                    {/* Nút Gọi bệnh nhân tiếp theo theo cơ chế Hybrid Queue */}
+                    <div className="w-full md:w-auto flex justify-end">
+                        <button
+                            onClick={handleCallNextPatient}
+                            disabled={loadingAction === 'callNext' || visitsList.some(v => v.TrangThai === 'DANG_KHAM')}
+                            className="w-full md:w-auto px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:from-slate-400 disabled:to-slate-400 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all disabled:opacity-60 cursor-pointer disabled:cursor-not-allowed"
+                            title={visitsList.some(v => v.TrangThai === 'DANG_KHAM') 
+                                ? "Bác sĩ đang có ca khám chưa hoàn tất. Vui lòng hoàn thành hoặc chỉ định CLS trước khi gọi ca tiếp theo." 
+                                : "Tự động gọi bệnh nhân tiếp theo theo thứ tự FIFO chung (P2/P3 xếp chung, theo thời gian vào hàng)"}
+                        >
+                            {loadingAction === 'callNext' ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                                <Megaphone className="w-4 h-4" />
+                            )}
+                            Gọi bệnh nhân tiếp theo
+                        </button>
                     </div>
                 </div>
 
@@ -878,21 +1119,28 @@ export default function DoctorExamine({
                         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                             <div className="p-3.5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
                                 <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                                    <Clock className="w-4 h-4 text-primary" /> Hàng chờ bệnh nhân ({visits.length})
+                                    <Clock className="w-4 h-4 text-primary" /> Hàng chờ bệnh nhân ({pagination.total})
                                 </h3>
                             </div>
 
                             <div className="divide-y divide-gray-100 max-h-[340px] overflow-y-auto">
-                                {visits.length === 0 ? (
+                                {visitsList.length === 0 ? (
                                     <div className="p-8 text-center text-gray-400">
                                         <User className="w-10 h-10 mx-auto text-gray-300 mb-2" />
                                         <p className="text-sm">Không có lượt khám nào phù hợp</p>
                                     </div>
                                 ) : (
-                                    visits.map((v) => {
+                                    visitsList.map((v) => {
                                         const isSelected = v.MaLuotKham === activeVisit?.MaLuotKham;
                                         const age = calculateAge(v.benhNhan?.NgaySinh);
-                                        const timeStr = v.ThoiGianTiepNhan ? new Date(v.ThoiGianTiepNhan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
+                                        const queueTime = v.ThoiGianVaoHang || v.ThoiGianTiepNhan;
+                                        const timeStr = queueTime ? new Date(queueTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
+
+                                        // Phân loại P2/P3 chính xác theo LoaiHangDoi
+                                        const isP2 = v.LoaiHangDoi === 'DAT_LICH' 
+                                            || (!v.LoaiHangDoi && (v.MucUuTien === 2 || !!v.MaLichHen || (v.SoPhieu && v.SoPhieu.startsWith('A-'))));
+                                        const isP3 = v.LoaiHangDoi === 'TRUC_TIEP' 
+                                            || (!v.LoaiHangDoi && !isP2 && (v.MucUuTien === 3 || !v.MaLichHen));
 
                                         return (
                                             <div
@@ -903,15 +1151,39 @@ export default function DoctorExamine({
                                                 }`}
                                             >
                                                 <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <div className="inline-flex flex-col items-start">
+                                                            <span className="px-2 py-0.5 bg-blue-100 text-blue-800 font-mono font-bold text-xs rounded-md shadow-xs">
+                                                                {v.SoPhieu || `#${v.MaLuotKham}`}
+                                                            </span>
+                                                            <div className="flex items-center gap-1 mt-0.5">
+                                                                <span className="text-[10px] text-gray-500 font-mono font-semibold">
+                                                                    STT: {v.STTTrongNgay != null ? v.STTTrongNgay : '---'}
+                                                                </span>
+                                                                {(v.caKham?.MaCaKham || v.MaCaKham) && (
+                                                                    <span className="text-[9px] px-1 bg-slate-100 text-slate-700 rounded border border-slate-200 font-mono">
+                                                                        Ca {v.caKham?.MaCaKham || v.MaCaKham}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                         <span className="font-semibold text-gray-900 text-sm">
                                                             {v.benhNhan?.HoTen || 'Bệnh nhân'}
                                                         </span>
-                                                        <span className="text-xs text-gray-500 font-mono">
+                                                        <span className="text-xs text-gray-400 font-mono">
                                                             #{v.MaLuotKham}
                                                         </span>
+                                                        {isP2 ? (
+                                                            <span className="px-1.5 py-0.2 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold rounded">
+                                                                P2 Đặt lịch
+                                                            </span>
+                                                        ) : isP3 ? (
+                                                            <span className="px-1.5 py-0.2 bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-semibold rounded">
+                                                                P3 Trực tiếp
+                                                            </span>
+                                                        ) : null}
                                                     </div>
-                                                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                                                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ml-1 ${
                                                         v.TrangThai === 'DANG_KHAM' ? 'bg-sky-100 text-sky-700 animate-pulse' :
                                                         v.TrangThai === 'CHO_KHAM' ? 'bg-amber-100 text-amber-700' :
                                                         v.TrangThai === 'CHO_KET_QUA' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
@@ -927,15 +1199,118 @@ export default function DoctorExamine({
                                                     </span>
                                                 </div>
 
-                                                <div className="flex items-center justify-between text-xs text-gray-500 mt-1.5">
-                                                    <span>{v.benhNhan?.GioiTinh === 'NAM' ? 'Nam' : 'Nữ'}{age ? `, ${age} tuổi` : ''}</span>
-                                                    <span className="flex items-center gap-1">
-                                                        <Clock className="w-3 h-3 text-gray-400" /> {timeStr}
-                                                    </span>
+                                                <div className="flex items-center justify-between text-xs text-gray-500 mt-2 flex-wrap gap-1">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span>{v.benhNhan?.GioiTinh === 'NAM' ? 'Nam' : 'Nữ'}{age ? `, ${age} tuổi` : ''}</span>
+                                                        {['CHO_KHAM', 'CHO_KHAM_LAI'].includes(v.TrangThai) && (
+                                                            <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                                                                (v.call_count || 0) >= 3 
+                                                                    ? 'bg-rose-100 text-rose-700 font-extrabold' 
+                                                                    : 'bg-slate-100 text-slate-600'
+                                                            }`}>
+                                                                Gọi: {v.call_count || 0}/3
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex items-center gap-1.5">
+                                                        {/* Nút phát loa gọi cá nhân */}
+                                                        {['CHO_KHAM', 'CHO_KHAM_LAI'].includes(v.TrangThai) && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => handleRecordCall(v, e)}
+                                                                disabled={loadingAction === `call_${v.MaLuotKham}`}
+                                                                className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded text-[10px] font-semibold transition-all inline-flex items-center gap-0.5"
+                                                                title="Phát loa gọi bệnh nhân này và ghi nhận lượt gọi"
+                                                            >
+                                                                <Megaphone className="w-2.5 h-2.5" />
+                                                                Gọi loa
+                                                            </button>
+                                                        )}
+
+                                                        {/* Nút bỏ lượt thủ công sau đủ 3 lần gọi */}
+                                                        {v.can_skip && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => handleSkipPatient(v, e)}
+                                                                disabled={loadingAction === `skip_${v.MaLuotKham}`}
+                                                                className="px-2 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded text-[10px] font-bold transition-all"
+                                                                title="Bệnh nhân vắng mặt sau 3 lần gọi -> Xác nhận bỏ lượt"
+                                                            >
+                                                                Bỏ lượt
+                                                            </button>
+                                                        )}
+
+                                                        {/* Nút tiếp nhận lại sau CLS nếu đang chờ kết quả */}
+                                                        {v.TrangThai === 'CHO_KET_QUA' && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => handleRecordClsReturn(v, e)}
+                                                                disabled={loadingAction === `cls_return_${v.MaLuotKham}`}
+                                                                className="px-2 py-0.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded text-[10px] font-bold transition-all"
+                                                                title="Ghi nhận bệnh nhân đã có kết quả và quay lại phòng khám"
+                                                            >
+                                                                Vào hàng khám lại
+                                                            </button>
+                                                        )}
+
+                                                        <span className="flex items-center gap-1 text-[11px] text-gray-500 font-mono">
+                                                            <Clock className="w-3 h-3 text-gray-400" /> Vào hàng: {timeStr}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         );
                                     })
+                                )}
+                            </div>
+
+                            {/* Phân trang danh sách hàng chờ Bác sĩ (PHASE 13) */}
+                            <div className="p-3 bg-gray-50/70 border-t border-gray-100 flex flex-col gap-2 text-xs text-gray-500">
+                                <div className="flex items-center justify-between">
+                                    <span>
+                                        Hiển thị <strong className="text-gray-800 font-bold">{pagination.total > 0 ? (pagination.from || 1) : 0}</strong> - <strong className="text-gray-800 font-bold">{pagination.to || 0}</strong> / <strong className="text-gray-800 font-bold">{pagination.total}</strong>
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-[11px] text-gray-400">Xem:</span>
+                                        <select
+                                            value={perPage}
+                                            onChange={(e) => handlePerPageChange(Number(e.target.value))}
+                                            className="text-[11px] rounded border-gray-200 py-0.5 px-1 bg-white font-medium focus:ring-primary focus:border-primary"
+                                        >
+                                            <option value={10}>10/trang</option>
+                                            <option value={20}>20/trang</option>
+                                            <option value={50}>50/trang</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {pagination.last_page > 1 && (
+                                    <div className="flex items-center justify-between gap-1 pt-1 border-t border-gray-100">
+                                        <button
+                                            type="button"
+                                            onClick={() => handlePageChange(pagination.current_page - 1)}
+                                            disabled={pagination.current_page <= 1}
+                                            className="px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-0.5 text-[11px] font-medium"
+                                        >
+                                            <ChevronLeft className="w-3 h-3" />
+                                            <span>Trước</span>
+                                        </button>
+
+                                        <span className="text-[11px] font-semibold text-gray-700">
+                                            Trang {pagination.current_page} / {pagination.last_page}
+                                        </span>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => handlePageChange(pagination.current_page + 1)}
+                                            disabled={pagination.current_page >= pagination.last_page}
+                                            className="px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-0.5 text-[11px] font-medium"
+                                        >
+                                            <span>Sau</span>
+                                            <ChevronRight className="w-3 h-3" />
+                                        </button>
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -947,10 +1322,32 @@ export default function DoctorExamine({
                                     <div className="flex items-center gap-2">
                                         <User className="w-4 h-4" />
                                         <h3 className="font-bold text-sm">Hồ sơ người khám</h3>
+                                        {activeVisit.SoPhieu && (
+                                            <div className="inline-flex items-center gap-1.5 bg-white text-primary px-2.5 py-0.5 rounded font-mono font-bold text-xs shadow-sm">
+                                                <span>{activeVisit.SoPhieu}</span>
+                                                {activeVisit.STTTrongNgay != null && (
+                                                    <span className="text-[10px] text-primary/70 font-semibold border-l border-primary/20 pl-1.5">
+                                                        STT: {activeVisit.STTTrongNgay}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
-                                    <span className="bg-white/20 px-2 py-0.5 rounded text-xs font-mono">
-                                        BN #{activeVisit.benhNhan?.MaBenhNhan}
-                                    </span>
+                                    <div className="flex items-center gap-1.5">
+                                        {activeVisit.LoaiHangDoi === 'DAT_LICH' && (
+                                            <span className="bg-emerald-400/30 text-emerald-100 border border-emerald-300/40 px-2 py-0.5 rounded text-[11px] font-semibold">
+                                                P2 Đặt lịch
+                                            </span>
+                                        )}
+                                        {activeVisit.LoaiHangDoi === 'TRUC_TIEP' && (
+                                            <span className="bg-purple-400/30 text-purple-100 border border-purple-300/40 px-2 py-0.5 rounded text-[11px] font-semibold">
+                                                P3 Trực tiếp
+                                            </span>
+                                        )}
+                                        <span className="bg-white/20 px-2 py-0.5 rounded text-xs font-mono">
+                                            BN #{activeVisit.benhNhan?.MaBenhNhan}
+                                        </span>
+                                    </div>
                                 </div>
 
                                 <div className="p-4 space-y-3 text-sm">
@@ -969,6 +1366,17 @@ export default function DoctorExamine({
                                             </p>
                                         </div>
                                     </div>
+
+                                    {(activeVisit.chuyenKhoa || activeVisit.caKham) && (
+                                        <div className="flex items-center gap-3 text-xs text-gray-600 bg-gray-50 p-2 rounded-xl border border-gray-100">
+                                            {activeVisit.chuyenKhoa && (
+                                                <span>Khoa: <strong className="text-gray-800">{activeVisit.chuyenKhoa.TenChuyenKhoa}</strong></span>
+                                            )}
+                                            {activeVisit.caKham && (
+                                                <span>Ca: <strong className="text-gray-800">{activeVisit.caKham.GioBatDau?.substring(0, 5)} - {activeVisit.caKham.GioKetThuc?.substring(0, 5)}</strong></span>
+                                            )}
+                                        </div>
+                                    )}
 
                                     <div className="space-y-1.5 text-xs text-gray-600">
                                         <div className="flex items-center gap-2">
@@ -1790,7 +2198,14 @@ export default function DoctorExamine({
                                                                                 >
                                                                                     <td className="px-3 py-2 font-mono text-gray-500">#{m.MaThuoc}</td>
                                                                                     <td className="px-3 py-2 font-bold text-gray-900">
-                                                                                        {m.TenThuoc}
+                                                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                                                            <span>{m.TenThuoc}</span>
+                                                                                            {m.ApDungBHYT !== false ? (
+                                                                                                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800">BHYT</span>
+                                                                                            ) : (
+                                                                                                <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-gray-100 text-gray-600">Tự túc</span>
+                                                                                            )}
+                                                                                        </div>
                                                                                     </td>
                                                                                     <td className="px-3 py-2 text-gray-600">
                                                                                         {m.HoatChat || '--'} {m.HamLuong && <span className="text-gray-500">({m.HamLuong})</span>}

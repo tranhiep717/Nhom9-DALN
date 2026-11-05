@@ -29,6 +29,40 @@ class TaiKhoan extends Authenticatable
         'MatKhau',
     ];
 
+    protected $appends = [
+        'name',
+        'id',
+        'email',
+    ];
+
+    public function getNameAttribute(): string
+    {
+        return $this->benhNhan?->HoTen 
+            ?? $this->bacSi?->HoTen 
+            ?? $this->TenDangNhap 
+            ?? 'Người dùng';
+    }
+
+    public function getIdAttribute(): int
+    {
+        return (int) $this->MaTaiKhoan;
+    }
+
+    public function getEmailAttribute(): ?string
+    {
+        return $this->attributes['Email'] ?? null;
+    }
+
+    public function setEmailAttribute($value): void
+    {
+        $this->attributes['Email'] = $value;
+    }
+
+    public function setPasswordAttribute($value): void
+    {
+        $this->attributes['MatKhau'] = $value;
+    }
+
     /**
      * Tên cột định danh khóa chính cho Auth
      */
@@ -123,6 +157,21 @@ class TaiKhoan extends Authenticatable
     public function thongBaos()
     {
         return $this->hasMany(ThongBao::class, 'MaTaiKhoan', 'MaTaiKhoan')->orderBy('NgayTao', 'desc');
+    }
+
+    public function chamCongs()
+    {
+        return $this->hasMany(ChamCong::class, 'MaTaiKhoan', 'MaTaiKhoan');
+    }
+
+    public function bangLuongs()
+    {
+        return $this->hasMany(BangLuong::class, 'MaTaiKhoan', 'MaTaiKhoan');
+    }
+
+    public function donTuNhanSus()
+    {
+        return $this->hasMany(DonTuNhanSu::class, 'MaTaiKhoan', 'MaTaiKhoan')->orderBy('created_at', 'desc');
     }
 }
 

@@ -20,11 +20,19 @@ class Thuoc extends Model
         'DonViTinh',
         'DangBaoChe',
         'DonGia',
+        'ApDungBHYT',
         'SoLuongTon',
         'HuongDanSuDung',
         'ChongChiDinh',
         'TrangThai',
     ];
+
+    protected $appends = ['GiaBan'];
+
+    public function getGiaBanAttribute(): float
+    {
+        return (float) ($this->attributes['DonGia'] ?? 0);
+    }
 
     // Quan hệ: Thuoc có nhiều ChiTietDonThuoc
     public function chiTietDonThuocs()

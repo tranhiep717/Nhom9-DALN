@@ -12,10 +12,12 @@ import {
     CreditCard, 
     X,
     User,
+    Users,
     ShieldCheck
 } from 'lucide-react';
-import { useState } from 'react';
-import { adminNavItems } from './Dashboard';
+import { useState, useMemo } from 'react';
+import { adminNavItems } from '@/constants/navigation';
+import AdminPagination from '@/Components/AdminPagination';
 
 interface ChiTietHoaDonItem {
     MaChiTiet: number;
@@ -33,6 +35,11 @@ interface ThanhToanItem {
     MaGiaoDich?: string;
     ThoiGianThanhToan: string;
     TrangThai: string;
+    nguoiThu?: {
+        MaTaiKhoan: number;
+        TenDangNhap: string;
+        Email?: string;
+    };
 }
 
 interface InvoiceItem {
@@ -46,6 +53,11 @@ interface InvoiceItem {
     DaThanhToan: number;
     ConLai: number;
     TrangThai: string;
+    nguoiThu?: {
+        MaTaiKhoan: number;
+        TenDangNhap: string;
+        Email?: string;
+    };
     luotKham?: {
         MaLuotKham: number;
         benhNhan?: {
@@ -54,6 +66,11 @@ interface InvoiceItem {
         };
         bacSi?: {
             HoTen: string;
+        };
+        nguoiTiepNhan?: {
+            MaTaiKhoan: number;
+            TenDangNhap: string;
+            Email?: string;
         };
     };
     chiTietHoaDons?: ChiTietHoaDonItem[];
@@ -75,8 +92,16 @@ export default function AdminInvoices({ auth, invoices = [], filters = {} }: Inv
     const [statusFilter, setStatusFilter] = useState(filters.status || '');
     const [dateFilter, setDateFilter] = useState(filters.date || '');
 
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
+
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [selectedInvoice, setSelectedInvoice] = useState<InvoiceItem | null>(null);
+
+    const paginatedInvoices = useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return invoices.slice(start, start + pageSize);
+    }, [invoices, currentPage, pageSize]);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
@@ -202,12 +227,20 @@ export default function AdminInvoices({ auth, invoices = [], filters = {} }: Inv
                                     <th className="px-6 py-4 font-semibold text-right">BN Phải trả</th>
                                     <th className="px-6 py-4 font-semibold text-right">Đã thu</th>
                                     <th className="px-6 py-4 font-semibold text-right">Còn nợ</th>
+                                    <th className="px-6 py-4 font-semibold">Thu ngân (Truy vết)</th>
                                     <th className="px-6 py-4 font-semibold">Trạng thái</th>
                                     <th className="px-6 py-4 font-semibold text-right">Chi tiết</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 text-xs">
-                                {invoices.map((inv) => {
+                                {paginatedInvoices.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={10} className="px-6 py-12 text-center text-slate-500">
+                                            Không tìm thấy hóa đơn nào phù hợp.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    paginatedInvoices.map((inv) => {
                                     const bn = inv.luotKham?.benhNhan;
                                     const bs = inv.luotKham?.bacSi;
                                     const debt = Math.max(0, Number(inv.BenhNhanChiTra) - Number(inv.DaThanhToan));
@@ -239,6 +272,19 @@ export default function AdminInvoices({ auth, invoices = [], filters = {} }: Inv
                                                 {formatCurrency(debt)}
                                             </td>
                                             <td className="px-6 py-4">
+                                                {inv.nguoiThu ? (
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-teal-50 text-teal-800 border border-teal-200">
+                                                        {inv.nguoiThu.TenDangNhap}
+                                                    </span>
+                                                ) : inv.thanhToans?.[0]?.nguoiThu ? (
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-teal-50 text-teal-800 border border-teal-200">
+                                                        {inv.thanhToans[0].nguoiThu.TenDangNhap}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-slate-400 text-xs">--</span>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4">
                                                 {getStatusBadge(inv.TrangThai)}
                                             </td>
                                             <td className="px-6 py-4 text-right">
@@ -251,10 +297,18 @@ export default function AdminInvoices({ auth, invoices = [], filters = {} }: Inv
                                             </td>
                                         </tr>
                                     );
-                                })}
+                                }))}
                             </tbody>
                         </table>
                     </div>
+
+                    <AdminPagination
+                        currentPage={currentPage}
+                        totalItems={invoices.length}
+                        pageSize={pageSize}
+                        onPageChange={setCurrentPage}
+                        onPageSizeChange={setPageSize}
+                    />
                 </div>
             </div>
 
@@ -293,6 +347,40 @@ export default function AdminInvoices({ auth, invoices = [], filters = {} }: Inv
                             <div>
                                 <span className="text-slate-400 block">BN phải trả</span>
                                 <span className="font-black text-teal-800 text-sm mt-0.5 block">{formatCurrency(selectedInvoice.BenhNhanChiTra)}</span>
+                            </div>
+                        </div>
+
+                        {/* Chuỗi truy vết nghiệp vụ */}
+                        <div className="bg-indigo-50/70 rounded-2xl border border-indigo-100 p-3.5 space-y-1.5 text-xs">
+                            <div className="font-bold text-indigo-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                                <Users className="w-3.5 h-3.5 text-indigo-600" />
+                                Chuỗi truy vết nhân sự thực hiện
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                                <div className="bg-white p-2.5 rounded-xl border border-indigo-50">
+                                    <span className="text-slate-400 block text-[10px]">1. Tiếp đón tại sảnh</span>
+                                    <span className="font-bold text-slate-800 block mt-0.5">
+                                        {selectedInvoice.luotKham?.nguoiTiepNhan?.TenDangNhap 
+                                            ? `Lễ tân @${selectedInvoice.luotKham.nguoiTiepNhan.TenDangNhap}` 
+                                            : 'Lễ tân tiếp nhận'}
+                                    </span>
+                                </div>
+                                <div className="bg-white p-2.5 rounded-xl border border-indigo-50">
+                                    <span className="text-slate-400 block text-[10px]">2. Bác sĩ khám</span>
+                                    <span className="font-bold text-slate-800 block mt-0.5">
+                                        {selectedInvoice.luotKham?.bacSi?.HoTen || 'Bác sĩ phòng khám'}
+                                    </span>
+                                </div>
+                                <div className="bg-white p-2.5 rounded-xl border border-indigo-50">
+                                    <span className="text-slate-400 block text-[10px]">3. Thu ngân thanh toán</span>
+                                    <span className="font-bold text-teal-700 block mt-0.5">
+                                        {selectedInvoice.nguoiThu?.TenDangNhap 
+                                            ? `Lễ tân @${selectedInvoice.nguoiThu.TenDangNhap}` 
+                                            : (selectedInvoice.thanhToans?.[0]?.nguoiThu?.TenDangNhap 
+                                                ? `Lễ tân @${selectedInvoice.thanhToans[0].nguoiThu.TenDangNhap}` 
+                                                : 'Chưa thu')}
+                                    </span>
+                                </div>
                             </div>
                         </div>
 

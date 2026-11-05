@@ -19,7 +19,10 @@ import {
     Clock,
     AlertCircle,
     CheckCircle2,
-    DollarSign
+    DollarSign,
+    FlaskConical,
+    UserCheck,
+    CalendarClock
 } from 'lucide-react';
 import { 
     LineChart, 
@@ -36,19 +39,8 @@ import {
     ResponsiveContainer,
     Legend
 } from 'recharts';
-
-export const adminNavItems = [
-    { name: 'Tổng quan', href: '/admin/dashboard', icon: LayoutDashboard },
-    { name: 'Tài khoản người dùng', href: '/admin/users', icon: KeyRound },
-    { name: 'Quản lý Bệnh nhân', href: '/admin/patients', icon: Users },
-    { name: 'Quản lý Bác sĩ', href: '/admin/doctors', icon: Stethoscope },
-    { name: 'Quản lý Chuyên khoa', href: '/admin/specialties', icon: HeartPulse },
-    { name: 'Lịch & Ca khám toàn viện', href: '/admin/schedules', icon: Calendar },
-    { name: 'Quản lý kho Thuốc', href: '/admin/medicines', icon: Pill },
-    { name: 'Dịch vụ y tế', href: '/admin/services', icon: Building2 },
-    { name: 'Hóa đơn & Viện phí', href: '/admin/invoices', icon: Receipt },
-    { name: 'Báo cáo & Doanh thu', href: '/admin/reports', icon: BarChart3 },
-];
+import { ADMIN_NAV_ITEMS, adminNavItems } from '@/constants/navigation';
+export { ADMIN_NAV_ITEMS, adminNavItems };
 
 interface AdminDashboardProps {
     auth: any;

@@ -373,61 +373,124 @@ class BacSiController extends Controller
         $maBacSi = $bacSi?->MaBacSi;
         $today = now()->toDateString();
 
+        // Chuẩn hóa bộ lọc ngày thống nhất (ưu tiên NgayKham, fallback ThoiGianTiepNhan)
+        $dateFilter = function ($q) use ($today) {
+            $q->where(function ($sub) use ($today) {
+                $sub->whereDate('NgayKham', $today)
+                    ->orWhere(function ($s) use ($today) {
+                        $s->whereNull('NgayKham')->whereDate('ThoiGianTiepNhan', $today);
+                    });
+            });
+        };
+
         // 1. Lịch khám hôm nay: Lịch hẹn có ca khám thuộc lịch làm việc hôm nay của bác sĩ (loại trừ đã hủy)
         $todayAppointmentsCount = LichHen::whereHas('caKham.lichLamViec', function ($q) use ($maBacSi, $today) {
             $q->where('MaBacSi', $maBacSi)
               ->whereDate('NgayLamViec', $today);
         })->where('TrangThai', '!=', 'DA_HUY')->count();
 
-        // 2. Bệnh nhân chờ khám hôm nay: Lượt khám của bác sĩ hôm nay có TrangThai = 'CHO_KHAM'
+        // 2. Bệnh nhân chờ khám hôm nay: Gồm cả CHO_KHAM và CHO_KHAM_LAI (tái khám CLS)
         $waitingPatientsCount = LuotKham::where('MaBacSi', $maBacSi)
-            ->whereDate('ThoiGianTiepNhan', $today)
-            ->where('TrangThai', 'CHO_KHAM')
+            ->tap($dateFilter)
+            ->whereIn('TrangThai', ['CHO_KHAM', 'CHO_KHAM_LAI'])
             ->count();
 
-        // 3. Lượt khám đang thực hiện: Lượt khám của bác sĩ có TrangThai = 'DANG_KHAM'
+        // 3. Lượt khám đang thực hiện: TrangThai = 'DANG_KHAM'
         $inProgressVisitsCount = LuotKham::where('MaBacSi', $maBacSi)
             ->where('TrangThai', 'DANG_KHAM')
             ->count();
 
-        // 4. Lượt khám hoàn thành hôm nay: Lượt khám của bác sĩ hôm nay có TrangThai = 'HOAN_THANH'
+        // 4. Lượt khám hoàn thành hôm nay: TrangThai = 'HOAN_THANH'
         $completedTodayCount = LuotKham::where('MaBacSi', $maBacSi)
-            ->whereDate('ThoiGianTiepNhan', $today)
+            ->tap($dateFilter)
             ->where('TrangThai', 'HOAN_THANH')
             ->count();
 
-        // 5. Danh sách bệnh nhân trong hàng chờ khám hôm nay của bác sĩ (eager load tránh N+1)
+        // 5. Ca khám đang thực hiện của bác sĩ (nếu có)
+        $activeVisitModel = LuotKham::where('MaBacSi', $maBacSi)
+            ->where('TrangThai', 'DANG_KHAM')
+            ->with([
+                'benhNhan:MaBenhNhan,HoTen,NgaySinh,GioiTinh,SoDienThoai',
+                'phieuKham:MaPhieuKham,MaLuotKham,TrieuChung,ChanDoan',
+                'caKham:MaCaKham,GioBatDau,GioKetThuc',
+            ])
+            ->first();
+
+        $activeExamining = null;
+        if ($activeVisitModel) {
+            $activeAge = null;
+            if (!empty($activeVisitModel->benhNhan?->NgaySinh)) {
+                try {
+                    $activeAge = \Carbon\Carbon::parse($activeVisitModel->benhNhan->NgaySinh)->age;
+                } catch (\Throwable $e) {
+                    $activeAge = null;
+                }
+            }
+            $activeTime = $activeVisitModel->ThoiGianBatDauKham ?? $activeVisitModel->ThoiGianVaoHang ?? $activeVisitModel->ThoiGianTiepNhan;
+            $activeExamining = [
+                'id' => $activeVisitModel->benhNhan ? ('BN' . str_pad($activeVisitModel->benhNhan->MaBenhNhan, 6, '0', STR_PAD_LEFT)) : 'BN000000',
+                'visitId' => $activeVisitModel->MaLuotKham,
+                'ticket' => $activeVisitModel->SoPhieu ?? ('#' . $activeVisitModel->MaLuotKham),
+                'stt' => $activeVisitModel->STTTrongNgay ?? '---',
+                'shiftId' => $activeVisitModel->MaCaKham,
+                'name' => $activeVisitModel->benhNhan?->HoTen ?? 'Bệnh nhân',
+                'age' => $activeAge !== null ? $activeAge : 'N/A',
+                'gender' => $activeVisitModel->benhNhan?->GioiTinh === 'NAM' ? 'Nam' : ($activeVisitModel->benhNhan?->GioiTinh === 'NU' ? 'Nữ' : ''),
+                'time' => $activeTime ? \Carbon\Carbon::parse($activeTime)->format('H:i') : '--:--',
+                'reason' => $activeVisitModel->phieuKham?->TrieuChung ?? $activeVisitModel->lichHen?->LyDoKham ?? 'Khám bệnh',
+                'status' => 'Đang khám',
+            ];
+        }
+
+        // 6. Danh sách bệnh nhân trong hàng chờ khám hôm nay (CHÍNH SÁCH FIFO 5.1 & 15.4)
+        // - Chỉ gồm các bệnh nhân chờ khám: CHO_KHAM và CHO_KHAM_LAI
+        // - Không trộn bệnh nhân DANG_KHAM vào bảng hàng chờ để tránh sai lệch thời gian và trạng thái
+        // - Sắp xếp tuyệt đối theo FIFO: ThoiGianVaoHang ASC, sau đó MaLuotKham ASC
         $queue = LuotKham::where('MaBacSi', $maBacSi)
-            ->whereDate('ThoiGianTiepNhan', $today)
-            ->whereIn('TrangThai', ['CHO_KHAM', 'DANG_KHAM'])
+            ->tap($dateFilter)
+            ->whereIn('TrangThai', ['CHO_KHAM', 'CHO_KHAM_LAI'])
             ->with([
                 'benhNhan:MaBenhNhan,HoTen,NgaySinh,GioiTinh,SoDienThoai',
                 'phieuKham:MaPhieuKham,MaLuotKham,TrieuChung,ChanDoan',
                 'lichHen:MaLichHen,LyDoKham',
+                'caKham:MaCaKham,GioBatDau,GioKetThuc',
             ])
-            ->orderByRaw("FIELD(TrangThai, 'DANG_KHAM', 'CHO_KHAM')")
-            ->orderBy('ThoiGianTiepNhan', 'asc')
+            ->orderBy('ThoiGianVaoHang', 'asc')
+            ->orderBy('MaLuotKham', 'asc')
             ->get()
             ->map(function ($vk) {
                 $age = null;
-                if ($vk->benhNhan?->NgaySinh) {
-                    $age = \Carbon\Carbon::parse($vk->benhNhan->NgaySinh)->age;
+                if (!empty($vk->benhNhan?->NgaySinh)) {
+                    try {
+                        $age = \Carbon\Carbon::parse($vk->benhNhan->NgaySinh)->age;
+                    } catch (\Throwable $e) {
+                        $age = null;
+                    }
                 }
+                $queueTime = $vk->ThoiGianVaoHang ?? $vk->ThoiGianTiepNhan;
                 return [
                     'id' => $vk->benhNhan ? ('BN' . str_pad($vk->benhNhan->MaBenhNhan, 6, '0', STR_PAD_LEFT)) : 'BN000000',
                     'visitId' => $vk->MaLuotKham,
+                    'ticket' => $vk->SoPhieu ?? ('#' . $vk->MaLuotKham),
+                    'stt' => $vk->STTTrongNgay ?? '---',
+                    'shiftId' => $vk->MaCaKham,
                     'name' => $vk->benhNhan?->HoTen ?? 'Bệnh nhân',
-                    'age' => $age ?? 'N/A',
-                    'time' => $vk->ThoiGianTiepNhan ? \Carbon\Carbon::parse($vk->ThoiGianTiepNhan)->format('H:i') : '--:--',
-                    'status' => $vk->TrangThai === 'DANG_KHAM' ? 'Đang khám' : 'Đang chờ',
+                    'age' => $age !== null ? $age : 'N/A',
+                    'gender' => $vk->benhNhan?->GioiTinh === 'NAM' ? 'Nam' : ($vk->benhNhan?->GioiTinh === 'NU' ? 'Nữ' : ''),
+                    'time' => $queueTime ? \Carbon\Carbon::parse($queueTime)->format('H:i') : '--:--',
+                    'status' => $vk->TrangThai === 'CHO_KHAM_LAI' ? 'Chờ khám lại' : 'Đang chờ',
                     'rawStatus' => $vk->TrangThai,
                     'reason' => $vk->phieuKham?->TrieuChung ?? $vk->lichHen?->LyDoKham ?? 'Khám bệnh',
+                    'queueType' => $vk->LoaiHangDoi === 'DAT_LICH' ? 'P2 Đặt lịch' : ($vk->LoaiHangDoi === 'TRUC_TIEP' ? 'P3 Trực tiếp' : 'Hàng thường'),
                 ];
             });
 
         $stats = [
             'todayAppointments' => $todayAppointmentsCount,
             'waitingPatients' => $waitingPatientsCount,
+            'waitingInitial' => LuotKham::where('MaBacSi', $maBacSi)->tap($dateFilter)->where('TrangThai', 'CHO_KHAM')->count(),
+            'waitingReExam' => LuotKham::where('MaBacSi', $maBacSi)->tap($dateFilter)->where('TrangThai', 'CHO_KHAM_LAI')->count(),
+            'waitingCls' => LuotKham::where('MaBacSi', $maBacSi)->tap($dateFilter)->where('TrangThai', 'CHO_KET_QUA')->count(),
             'inProgressVisits' => $inProgressVisitsCount,
             'completedVisits' => $completedTodayCount,
         ];
@@ -439,6 +502,7 @@ class BacSiController extends Controller
                     'doctor' => $bacSi,
                     'stats' => $stats,
                     'queue' => $queue,
+                    'activeExamining' => $activeExamining,
                 ],
             ]);
         }
@@ -447,6 +511,162 @@ class BacSiController extends Controller
             'doctor' => $bacSi,
             'stats' => $stats,
             'queue' => $queue,
+            'activeExamining' => $activeExamining,
+        ]);
+    }
+
+    /**
+     * Màn hình riêng quản lý Bệnh nhân chờ CLS của Bác sĩ (PHASE 15.5)
+     */
+    public function clsPatients(Request $request): Response|JsonResponse
+    {
+        $user = $request->user();
+        if (!$user || (!$user->isBacSi() && !$user->isQuanTriVien())) {
+            abort(403, 'Bạn không có quyền truy cập vào danh sách bệnh nhân chờ CLS.');
+        }
+
+        $bacSi = $user->bacSi;
+        if (!$bacSi) {
+            $bacSi = BacSi::with('chuyenKhoa')->where('TrangThai', 'HOAT_DONG')->first();
+        }
+        $maBacSi = $bacSi?->MaBacSi;
+
+        $dateParam = $request->input('date');
+        $effectiveDate = ($dateParam === null) ? date('Y-m-d') : $dateParam;
+
+        $query = LuotKham::query()
+            ->where('MaBacSi', $maBacSi)
+            ->whereHas('chiDinhDichVus')
+            ->with([
+                'benhNhan:MaBenhNhan,HoTen,NgaySinh,GioiTinh,SoDienThoai,DiaChi',
+                'caKham:MaCaKham,GioBatDau,GioKetThuc',
+                'chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa',
+                'phieuKham:MaPhieuKham,MaLuotKham,TrieuChung,ChanDoan,ChanDoanBanDau,ChanDoanSauCLS',
+                'chiDinhDichVus.dichVu:MaDichVu,TenDichVu,DonGia',
+                'chiDinhDichVus.nhanVienThucHien:MaTaiKhoan,TenDangNhap,Email',
+            ]);
+
+        // Lọc ngày khám
+        if ($effectiveDate && $effectiveDate !== 'all') {
+            $query->where(function ($q) use ($effectiveDate) {
+                $q->whereDate('NgayKham', $effectiveDate)
+                  ->orWhere(function ($sub) use ($effectiveDate) {
+                      $sub->whereNull('NgayKham')->whereDate('ThoiGianTiepNhan', $effectiveDate);
+                  });
+            });
+        }
+
+        // Lọc theo Chuyên khoa
+        if ($specialtyId = $request->input('specialty_id')) {
+            $query->where('MaChuyenKhoa', $specialtyId);
+        }
+
+        // Lọc theo loại Dịch vụ CLS
+        if ($serviceId = $request->input('service_id')) {
+            $query->whereHas('chiDinhDichVus', function ($cq) use ($serviceId) {
+                $cq->where('MaDichVu', $serviceId);
+            });
+        }
+
+        // Lọc theo giai đoạn CLS
+        if ($stage = $request->input('status')) {
+            if ($stage === 'CHO_THUC_HIEN') {
+                $query->where('TrangThai', 'CHO_KET_QUA')
+                      ->whereHas('chiDinhDichVus', function ($cq) {
+                          $cq->whereIn('TrangThai', ['YEU_CAU', 'CHO_THUC_HIEN']);
+                      });
+            } elseif ($stage === 'DANG_THUC_HIEN') {
+                $query->where('TrangThai', 'CHO_KET_QUA')
+                      ->whereHas('chiDinhDichVus', function ($cq) {
+                          $cq->where('TrangThai', 'DANG_THUC_HIEN');
+                      });
+            } elseif ($stage === 'CHO_KET_QUA') {
+                $query->where('TrangThai', 'CHO_KET_QUA')
+                      ->whereHas('chiDinhDichVus', function ($cq) {
+                          $cq->where('TrangThai', 'CHO_KET_QUA');
+                      });
+            } elseif ($stage === 'DA_CO_KET_QUA') {
+                $query->where('TrangThai', 'CHO_KET_QUA')
+                      ->whereDoesntHave('chiDinhDichVus', function ($cq) {
+                          $cq->whereNotIn('TrangThai', ['DA_CO_KET_QUA', 'HOAN_THANH', 'DA_HUY']);
+                      });
+            } elseif ($stage === 'DA_QUAY_LAI') {
+                $query->where('TrangThai', 'CHO_KHAM_LAI');
+            }
+        } else {
+            $query->whereIn('TrangThai', ['CHO_KET_QUA', 'CHO_KHAM_LAI', 'DANG_KHAM']);
+        }
+
+        // Tìm kiếm
+        if ($search = $request->input('search')) {
+            $cleanCode = preg_replace('/[^0-9]/', '', $search);
+            $query->where(function ($q) use ($search, $cleanCode) {
+                $q->where('SoPhieu', 'like', "%{$search}%")
+                  ->orWhere('MaLuotKham', 'like', "%{$search}%")
+                  ->orWhereHas('benhNhan', function ($bq) use ($search, $cleanCode) {
+                      $bq->where('HoTen', 'like', "%{$search}%")
+                         ->orWhere('SoDienThoai', 'like', "%{$search}%");
+                      if (!empty($cleanCode)) {
+                          $bq->orWhere('MaBenhNhan', (int)$cleanCode);
+                      }
+                  });
+            });
+        }
+
+        $query->orderByRaw("CASE WHEN TrangThai = 'CHO_KHAM_LAI' THEN 1 WHEN TrangThai = 'CHO_KET_QUA' THEN 2 ELSE 3 END")
+              ->orderBy('ThoiGianTiepNhan', 'desc');
+
+        $perPage = (int)$request->input('per_page', 10);
+        if (!in_array($perPage, [10, 20, 50])) {
+            $perPage = 10;
+        }
+
+        $visits = $query->paginate($perPage)->withQueryString();
+
+        $clsServices = \App\Models\DichVu::where('TrangThai', 'HOAT_DONG')->orderBy('TenDichVu', 'asc')->get(['MaDichVu', 'TenDichVu']);
+        $specialties = ChuyenKhoa::where('TrangThai', 'HOAT_DONG')->orderBy('TenChuyenKhoa', 'asc')->get(['MaChuyenKhoa', 'TenChuyenKhoa']);
+
+        $baseStatQuery = LuotKham::where('MaBacSi', $maBacSi)->whereHas('chiDinhDichVus');
+        if ($effectiveDate && $effectiveDate !== 'all') {
+            $baseStatQuery->where(function ($q) use ($effectiveDate) {
+                $q->whereDate('NgayKham', $effectiveDate)
+                  ->orWhere(function ($sub) use ($effectiveDate) {
+                      $sub->whereNull('NgayKham')->whereDate('ThoiGianTiepNhan', $effectiveDate);
+                  });
+            });
+        }
+        $clsStats = [
+            'total' => (clone $baseStatQuery)->count(),
+            'waitingExec' => (clone $baseStatQuery)->where('TrangThai', 'CHO_KET_QUA')->whereHas('chiDinhDichVus', fn($cq) => $cq->whereIn('TrangThai', ['YEU_CAU', 'CHO_THUC_HIEN']))->count(),
+            'inProgress' => (clone $baseStatQuery)->where('TrangThai', 'CHO_KET_QUA')->whereHas('chiDinhDichVus', fn($cq) => $cq->where('TrangThai', 'DANG_THUC_HIEN'))->count(),
+            'waitingResult' => (clone $baseStatQuery)->where('TrangThai', 'CHO_KET_QUA')->whereHas('chiDinhDichVus', fn($cq) => $cq->where('TrangThai', 'CHO_KET_QUA'))->count(),
+            'hasResultWaitingReturn' => (clone $baseStatQuery)->where('TrangThai', 'CHO_KET_QUA')->whereDoesntHave('chiDinhDichVus', fn($cq) => $cq->whereNotIn('TrangThai', ['DA_CO_KET_QUA', 'HOAN_THANH', 'DA_HUY']))->count(),
+            'returnedToQueue' => (clone $baseStatQuery)->where('TrangThai', 'CHO_KHAM_LAI')->count(),
+        ];
+
+        if ($request->expectsJson() || $request->is('api/*')) {
+            return response()->json([
+                'success' => true,
+                'data' => $visits,
+                'clsStats' => $clsStats,
+            ]);
+        }
+
+        return Inertia::render('Doctor/ClsPatients', [
+            'doctor' => $bacSi,
+            'visits' => $visits,
+            'clsServices' => $clsServices,
+            'specialties' => $specialties,
+            'clsStats' => $clsStats,
+            'filters' => [
+                'date' => $effectiveDate,
+                'status' => $request->input('status', ''),
+                'search' => $request->input('search', ''),
+                'service_id' => $request->input('service_id', ''),
+                'specialty_id' => $request->input('specialty_id', ''),
+                'per_page' => $perPage,
+                'page' => $visits->currentPage(),
+            ],
         ]);
     }
 }

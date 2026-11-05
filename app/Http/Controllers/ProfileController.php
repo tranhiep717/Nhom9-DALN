@@ -18,9 +18,23 @@ class ProfileController extends Controller
      */
     public function edit(Request $request): Response
     {
+        $user = $request->user();
+        if ($user) {
+            $user->loadMissing(['vaiTro', 'benhNhan', 'bacSi']);
+        }
+
         return Inertia::render('Profile/Edit', [
-            'mustVerifyEmail' => $request->user() instanceof MustVerifyEmail,
+            'mustVerifyEmail' => false,
             'status' => session('status'),
+            'account' => [
+                'MaTaiKhoan' => $user->MaTaiKhoan,
+                'TenDangNhap' => $user->TenDangNhap,
+                'Email' => $user->Email,
+                'TrangThai' => $user->TrangThai,
+                'NgayTao' => $user->NgayTao,
+                'VaiTro' => $user->vaiTro?->TenVaiTro,
+                'HoTen' => $user->benhNhan?->HoTen ?? $user->bacSi?->HoTen ?? $user->TenDangNhap,
+            ],
         ]);
     }
 
@@ -29,15 +43,31 @@ class ProfileController extends Controller
      */
     public function update(ProfileUpdateRequest $request): RedirectResponse
     {
-        $request->user()->fill($request->validated());
+        $user = $request->user();
+        $validated = $request->validated();
 
-        if ($request->user()->isDirty('email')) {
-            $request->user()->email_verified_at = null;
+        // 1. Cập nhật Email nếu có
+        if (!empty($validated['email'])) {
+            $user->Email = $validated['email'];
         }
 
-        $request->user()->save();
+        // 2. Cập nhật Tên đăng nhập nếu có
+        if (!empty($validated['TenDangNhap'])) {
+            $user->TenDangNhap = $validated['TenDangNhap'];
+        }
 
-        return Redirect::route('profile.edit');
+        $user->save();
+
+        // 3. Đồng bộ Họ tên sang hồ sơ thực thể nếu có
+        if (!empty($validated['name'])) {
+            if ($user->benhNhan) {
+                $user->benhNhan->update(['HoTen' => $validated['name']]);
+            } elseif ($user->bacSi) {
+                $user->bacSi->update(['HoTen' => $validated['name']]);
+            }
+        }
+
+        return Redirect::route('profile.edit')->with('status', 'profile-updated');
     }
 
     /**

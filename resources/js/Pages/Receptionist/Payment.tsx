@@ -1,12 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import DashboardLayout from '@/Layouts/DashboardLayout';
 import { Head, router, usePage } from '@inertiajs/react';
+import { RECEPTIONIST_NAV_ITEMS } from '@/constants/navigation';
 import { 
     Users, 
     Calendar,
-    LayoutDashboard,
     CreditCard,
-    FileText,
     Receipt,
     Printer,
     CheckCircle2,
@@ -26,7 +25,14 @@ import {
     Tag,
     Building2,
     QrCode,
-    AlertTriangle
+    AlertTriangle,
+    LayoutList,
+    LayoutGrid,
+    Stethoscope,
+    Pill,
+    FlaskConical,
+    User,
+    ArrowRight
 } from 'lucide-react';
 
 interface BenhNhan {
@@ -36,6 +42,8 @@ interface BenhNhan {
     GioiTinh: string;
     NgaySinh?: string;
     DiaChi?: string;
+    SoTheBHYT?: string;
+    MucHuongBHYT?: number;
 }
 
 interface ChiTietHoaDon {
@@ -46,6 +54,9 @@ interface ChiTietHoaDon {
     SoLuong: number;
     DonGia: number | string;
     ThanhTien?: number | string;
+    DuocBHYTChiTra?: boolean;
+    TienBHYTChiTra?: number | string;
+    TienBenhNhanChiTra?: number | string;
     MaChiDinh?: number;
     MaChiTietDonThuoc?: number;
 }
@@ -78,7 +89,35 @@ interface HoaDon {
         MaLuotKham: number;
         TrangThai: string;
         benhNhan?: BenhNhan;
+        benh_nhan?: BenhNhan;
         bacSi?: {
+            MaBacSi: number;
+            HoTen: string;
+            chuyenKhoa?: {
+                TenChuyenKhoa: string;
+            };
+        };
+        bac_si?: {
+            MaBacSi: number;
+            HoTen: string;
+            chuyenKhoa?: {
+                TenChuyenKhoa: string;
+            };
+        };
+    };
+    luot_kham?: {
+        MaLuotKham: number;
+        TrangThai: string;
+        benhNhan?: BenhNhan;
+        benh_nhan?: BenhNhan;
+        bacSi?: {
+            MaBacSi: number;
+            HoTen: string;
+            chuyenKhoa?: {
+                TenChuyenKhoa: string;
+            };
+        };
+        bac_si?: {
             MaBacSi: number;
             HoTen: string;
             chuyenKhoa?: {
@@ -87,15 +126,26 @@ interface HoaDon {
         };
     };
     chiTietHoaDons?: ChiTietHoaDon[];
+    chi_tiet_hoa_dons?: ChiTietHoaDon[];
     thanhToans?: ThanhToan[];
+    thanh_toans?: ThanhToan[];
 }
 
 interface LuotKhamUnbilled {
     MaLuotKham: number;
     TrangThai: string;
     ThoiGianTiepNhan?: string;
+    CoBHYT?: boolean;
+    SoTheBHYT?: string;
+    MucHuongBHYT?: number;
+    TuyenKCB?: string;
     benhNhan?: BenhNhan;
+    benh_nhan?: BenhNhan;
     bacSi?: {
+        MaBacSi: number;
+        HoTen: string;
+    };
+    bac_si?: {
         MaBacSi: number;
         HoTen: string;
     };
@@ -106,21 +156,61 @@ interface LuotKhamUnbilled {
             MaChiTietDonThuoc: number;
             SoLuong: number;
             DonGia: number | string;
-            thuoc?: { TenThuoc: string };
+            thuoc?: { TenThuoc: string; ApDungBHYT?: boolean };
+        }>;
+        chi_tiet_don_thuocs?: Array<{
+            MaChiTietDonThuoc: number;
+            SoLuong: number;
+            DonGia: number | string;
+            thuoc?: { TenThuoc: string; ApDungBHYT?: boolean };
+        }>;
+    };
+    don_thuoc?: {
+        MaDonThuoc: number;
+        TrangThai: string;
+        chiTietDonThuocs?: Array<{
+            MaChiTietDonThuoc: number;
+            SoLuong: number;
+            DonGia: number | string;
+            thuoc?: { TenThuoc: string; ApDungBHYT?: boolean };
+        }>;
+        chi_tiet_don_thuocs?: Array<{
+            MaChiTietDonThuoc: number;
+            SoLuong: number;
+            DonGia: number | string;
+            thuoc?: { TenThuoc: string; ApDungBHYT?: boolean };
         }>;
     };
     chiDinhDichVus?: Array<{
         MaChiDinh: number;
         TrangThai: string;
         DonGia: number | string;
-        dichVu?: { TenDichVu: string };
+        dichVu?: { TenDichVu: string; ApDungBHYT?: boolean };
+        dich_vu?: { TenDichVu: string; ApDungBHYT?: boolean };
+    }>;
+    chi_dinh_dich_vus?: Array<{
+        MaChiDinh: number;
+        TrangThai: string;
+        DonGia: number | string;
+        dichVu?: { TenDichVu: string; ApDungBHYT?: boolean };
+        dich_vu?: { TenDichVu: string; ApDungBHYT?: boolean };
     }>;
 }
 
+type Paginated<T> = {
+    data: T[];
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+    from: number | null;
+    to: number | null;
+};
+
 interface Props {
     auth: any;
-    invoices: HoaDon[];
-    unbilledVisits: LuotKhamUnbilled[];
+    invoices?: HoaDon[] | Paginated<HoaDon>;
+    unbilledVisits?: LuotKhamUnbilled[] | Paginated<LuotKhamUnbilled>;
     stats: {
         todayRevenue: number;
         todayInvoices: number;
@@ -131,6 +221,11 @@ interface Props {
         search?: string;
         date?: string;
         status?: string;
+        per_page?: number | string;
+        page?: number | string;
+        unbilled_search?: string;
+        unbilled_per_page?: number | string;
+        unbilled_page?: number | string;
     };
 }
 
@@ -143,17 +238,25 @@ export default function ReceptionistPayment({
 }: Props) {
     const { flash } = usePage<any>().props;
 
-    const navItems = [
-        { name: 'Tổng quan', href: '/receptionist/dashboard', icon: LayoutDashboard },
-        { name: 'Hàng chờ tiếp nhận', href: '/receptionist/queue', icon: Calendar },
-        { name: 'Hóa đơn & Thu phí', href: '/receptionist/payment', icon: CreditCard },
-        { name: 'Hồ sơ', href: '/receptionist/records', icon: FileText },
-    ];
+    const invoiceList = Array.isArray(invoices) ? invoices : invoices?.data ?? [];
+    const invoicePagination = Array.isArray(invoices)
+        ? { current_page: 1, last_page: 1, per_page: invoiceList.length || 10, total: invoiceList.length || 0, from: null, to: null }
+        : (invoices ?? { data: [], current_page: 1, last_page: 1, per_page: 10, total: 0, from: null, to: null });
+
+    const unbilledList = Array.isArray(unbilledVisits) ? unbilledVisits : unbilledVisits?.data ?? [];
+    const unbilledPagination = Array.isArray(unbilledVisits)
+        ? { current_page: 1, last_page: 1, per_page: unbilledList.length || 10, total: unbilledList.length || 0, from: null, to: null }
+        : (unbilledVisits ?? { data: [], current_page: 1, last_page: 1, per_page: 10, total: 0, from: null, to: null });
 
     // Filter states
     const [searchQuery, setSearchQuery] = useState<string>(filters.search || '');
     const [filterDate, setFilterDate] = useState<string>(filters.date || '');
     const [filterStatus, setFilterStatus] = useState<string>(filters.status || '');
+    const [perPage, setPerPage] = useState<number>(Number(filters.per_page) || 10);
+    const [currentPage, setCurrentPage] = useState<number>(Number(filters.page) || 1);
+    const [unbilledSearchQuery, setUnbilledSearchQuery] = useState<string>(filters.unbilled_search || '');
+    const [unbilledPerPage, setUnbilledPerPage] = useState<number>(Number(filters.unbilled_per_page) || 10);
+    const [unbilledPage, setUnbilledPage] = useState<number>(Number(filters.unbilled_page) || 1);
 
     // Active Tab in page: 'invoices' (Danh sách hóa đơn), 'unbilled' (Chờ lập hóa đơn)
     const [activeTab, setActiveTab] = useState<'invoices' | 'unbilled'>('invoices');
@@ -178,27 +281,66 @@ export default function ReceptionistPayment({
     // Loading states
     const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
-    // Áp dụng bộ lọc
-    const handleApplyFilter = () => {
-        router.get('/receptionist/payment', {
-            search: searchQuery || undefined,
-            date: filterDate || undefined,
-            status: filterStatus || undefined,
-        }, {
+    const handleApplyFilter = (next: Partial<{ search: string; date: string; status: string; per_page: number; page: number }> = {}) => {
+        const query: Record<string, string | number | undefined> = {
+            search: next.search !== undefined ? next.search : (searchQuery || undefined),
+            date: next.date !== undefined ? next.date : (filterDate || undefined),
+            status: next.status !== undefined ? next.status : (filterStatus || undefined),
+            per_page: next.per_page ?? perPage,
+            page: next.page ?? 1,
+        };
+
+        router.get('/receptionist/payment', query, {
             preserveState: true,
             preserveScroll: true,
         });
     };
 
-    // Đặt lại bộ lọc
     const handleResetFilter = () => {
         setSearchQuery('');
         setFilterDate('');
         setFilterStatus('');
-        router.get('/receptionist/payment', {}, {
+        setPerPage(10);
+        setCurrentPage(1);
+        router.get('/receptionist/payment', { per_page: 10, page: 1 }, {
             preserveState: true,
             preserveScroll: true,
         });
+    };
+
+    const handlePageChange = (page: number) => {
+        if (page < 1 || page > (invoicePagination.last_page ?? 1) || page === currentPage) return;
+        setCurrentPage(page);
+        handleApplyFilter({ page, per_page: perPage });
+    };
+
+    const handleApplyUnbilledFilter = (next: Partial<{ search: string; per_page: number; page: number }> = {}) => {
+        const query: Record<string, string | number | undefined> = {
+            unbilled_search: next.search !== undefined ? next.search : (unbilledSearchQuery || undefined),
+            unbilled_per_page: next.per_page ?? unbilledPerPage,
+            unbilled_page: next.page ?? 1,
+        };
+
+        router.get('/receptionist/payment', query, {
+            preserveState: true,
+            preserveScroll: true,
+        });
+    };
+
+    const handleResetUnbilledFilter = () => {
+        setUnbilledSearchQuery('');
+        setUnbilledPerPage(10);
+        setUnbilledPage(1);
+        router.get('/receptionist/payment', { unbilled_search: undefined, unbilled_per_page: 10, unbilled_page: 1 }, {
+            preserveState: true,
+            preserveScroll: true,
+        });
+    };
+
+    const handleUnbilledPageChange = (page: number) => {
+        if (page < 1 || page > (unbilledPagination.last_page ?? 1) || page === unbilledPage) return;
+        setUnbilledPage(page);
+        handleApplyUnbilledFilter({ page, per_page: unbilledPerPage });
     };
 
     // Mở modal thu tiền
@@ -235,43 +377,202 @@ export default function ReceptionistPayment({
         });
     };
 
-    // Mở modal tạo hóa đơn
+    // Mở modal tạo hóa đơn (Tự động tính sẵn mức hưởng BHYT)
     const handleOpenCreateInvoiceModal = (visit: LuotKhamUnbilled) => {
         setCreatingForVisit(visit);
         setCreateTienKham(0);
         setCreateGiamGia(0);
-        setCreateBaoHiem(0);
         setCreateNote('');
+
+        const patient = getPatient(visit);
+        const hasBhyt = Boolean(visit.CoBHYT || visit.SoTheBHYT || patient?.SoTheBHYT);
+        const mucHuong = hasBhyt ? Number(visit.MucHuongBHYT ?? patient?.MucHuongBHYT ?? 80) : 0;
+
+        let medBhytEligible = 0;
+        const rx = getPrescription(visit);
+        if (rx && rx.TrangThai !== 'DA_HUY') {
+            const details = getPrescriptionDetails(visit);
+            details.forEach((ct: any) => {
+                const line = Number(ct.SoLuong || 0) * Number(ct.DonGia || 0);
+                const isBhyt = ct.thuoc ? (ct.thuoc.ApDungBHYT !== false) : true;
+                if (isBhyt) medBhytEligible += line;
+            });
+        }
+
+        let svcBhytEligible = 0;
+        const services = getServices(visit);
+        services.forEach((cd: any) => {
+            if (cd && cd.TrangThai !== 'DA_HUY') {
+                const line = Number(cd.DonGia || 0);
+                const isBhyt = cd.dichVu ? (cd.dichVu.ApDungBHYT !== false) : true;
+                if (isBhyt) svcBhytEligible += line;
+            }
+        });
+
+        const initialAutoBhyt = mucHuong > 0 ? Math.round((medBhytEligible + svcBhytEligible) * (mucHuong / 100)) : 0;
+        setCreateBaoHiem(initialAutoBhyt);
     };
 
-    // Tạm tính chi phí trước khi tạo hóa đơn
+    // Helper accessors for snake_case vs camelCase normalization
+    const asArray = <T,>(value: T[] | Record<string, T> | null | undefined): T[] => {
+        if (Array.isArray(value)) return value;
+        if (!value) return [];
+        return Object.values(value as Record<string, T>);
+    };
+
+    const getPatient = (visit: LuotKhamUnbilled | null | undefined): BenhNhan | undefined => {
+        if (!visit) return undefined;
+        return visit.benh_nhan || visit.benhNhan;
+    };
+
+    const getDoctor = (visit: LuotKhamUnbilled | null | undefined) => {
+        if (!visit) return undefined;
+        return visit.bac_si || visit.bacSi;
+    };
+
+    const getPrescription = (visit: LuotKhamUnbilled | null | undefined) => {
+        if (!visit) return undefined;
+        return visit.don_thuoc || visit.donThuoc;
+    };
+
+    const getPrescriptionDetails = (visit: LuotKhamUnbilled | null | undefined) => {
+        const rx = getPrescription(visit);
+        if (!rx) return [];
+        return asArray(rx.chi_tiet_don_thuocs || rx.chiTietDonThuocs || []);
+    };
+
+    const getServices = (visit: LuotKhamUnbilled | null | undefined) => {
+        if (!visit) return [];
+        return asArray(visit.chi_dinh_dich_vus || visit.chiDinhDichVus || []);
+    };
+
+    const getActiveMedicineCount = (visit: LuotKhamUnbilled) => {
+        const medicines = getPrescriptionDetails(visit);
+        return medicines.filter((item: any) => item && item.TrangThai !== 'DA_HUY' && Number(item.SoLuong ?? 0) > 0).length;
+    };
+
+    const getActiveServiceCount = (visit: LuotKhamUnbilled) => {
+        const services = getServices(visit);
+        return services.filter((item: any) => item && item.TrangThai !== 'DA_HUY').length;
+    };
+
+    const getInvoiceVisit = (inv: HoaDon | null | undefined) => {
+        if (!inv) return undefined;
+        return inv.luotKham || inv.luot_kham;
+    };
+
+    const getInvoicePatient = (inv: HoaDon | null | undefined): BenhNhan | undefined => {
+        const lk = getInvoiceVisit(inv);
+        return lk?.benhNhan || lk?.benh_nhan;
+    };
+
+    const getInvoiceDoctor = (inv: HoaDon | null | undefined) => {
+        const lk = getInvoiceVisit(inv);
+        return lk?.bacSi || lk?.bac_si;
+    };
+
+    // Sub-filters & display mode for Unbilled Tab
+    const [unbilledStatusFilter, setUnbilledStatusFilter] = useState<'ALL' | 'HOAN_THANH' | 'DANG_KHAM'>('ALL');
+    const [unbilledViewMode, setUnbilledViewMode] = useState<'table' | 'grid'>('table');
+
+    const filteredUnbilledList = useMemo(() => {
+        if (unbilledStatusFilter === 'ALL') return unbilledList;
+        return unbilledList.filter((item) => item.TrangThai === unbilledStatusFilter);
+    }, [unbilledList, unbilledStatusFilter]);
+
+    const unbilledCounts = useMemo(() => {
+        const total = unbilledList.length;
+        const completed = unbilledList.filter((item) => item.TrangThai === 'HOAN_THANH').length;
+        const inProgress = unbilledList.filter((item) => item.TrangThai === 'DANG_KHAM').length;
+        return { total, completed, inProgress };
+    }, [unbilledList]);
+
+    const formatDateTime = (dateStr?: string) => {
+        if (!dateStr) return '--';
+        try {
+            const d = new Date(dateStr);
+            return d.toLocaleString('vi-VN', {
+                hour: '2-digit',
+                minute: '2-digit',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+            });
+        } catch {
+            return dateStr;
+        }
+    };
+
+    // Tạm tính chi phí & Phân bổ BHYT trước khi tạo hóa đơn
     const estimatedCreateSummary = useMemo(() => {
-        if (!creatingForVisit) return { total: 0, patientPay: 0, medTotal: 0, svcTotal: 0 };
+        if (!creatingForVisit) {
+            return {
+                total: 0,
+                patientPay: 0,
+                medTotal: 0,
+                svcTotal: 0,
+                examCost: 0,
+                bhytCoveredTotal: 0,
+                selfPayTotal: 0,
+                autoBhytAmount: 0,
+                mucHuong: 0,
+                soTheBhyt: '',
+                hasBhyt: false,
+            };
+        }
+
+        const patient = getPatient(creatingForVisit);
+        const hasBhyt = Boolean(creatingForVisit.CoBHYT || creatingForVisit.SoTheBHYT || patient?.SoTheBHYT);
+        const soTheBhyt = creatingForVisit.SoTheBHYT || patient?.SoTheBHYT || '';
+        const mucHuong = hasBhyt ? Number(creatingForVisit.MucHuongBHYT ?? patient?.MucHuongBHYT ?? 80) : 0;
+
         let medTotal = 0;
-        if (creatingForVisit.donThuoc && creatingForVisit.donThuoc.TrangThai !== 'DA_HUY') {
-            creatingForVisit.donThuoc.chiTietDonThuocs?.forEach(ct => {
-                medTotal += (ct.SoLuong * Number(ct.DonGia));
+        let medBhytEligible = 0;
+        const rx = getPrescription(creatingForVisit);
+        if (rx && rx.TrangThai !== 'DA_HUY') {
+            const details = getPrescriptionDetails(creatingForVisit);
+            details.forEach((ct: any) => {
+                const line = Number(ct.SoLuong || 0) * Number(ct.DonGia || 0);
+                medTotal += line;
+                const isBhyt = ct.thuoc ? (ct.thuoc.ApDungBHYT !== false) : true;
+                if (isBhyt) medBhytEligible += line;
             });
         }
 
         let svcTotal = 0;
-        if (creatingForVisit.chiDinhDichVus) {
-            creatingForVisit.chiDinhDichVus.forEach(cd => {
-                if (cd.TrangThai !== 'DA_HUY') {
-                    svcTotal += Number(cd.DonGia);
-                }
-            });
-        }
+        let svcBhytEligible = 0;
+        const services = getServices(creatingForVisit);
+        services.forEach((cd: any) => {
+            if (cd && cd.TrangThai !== 'DA_HUY') {
+                const line = Number(cd.DonGia || 0);
+                svcTotal += line;
+                const isBhyt = cd.dichVu ? (cd.dichVu.ApDungBHYT !== false) : true;
+                if (isBhyt) svcBhytEligible += line;
+            }
+        });
 
-        const totalCost = (Number(createTienKham) || 0) + medTotal + svcTotal;
-        const finalTotal = totalCost > 0 ? totalCost : 100000; // Phí khám tối thiểu nếu trống
-        const patientPay = Math.max(0, finalTotal - (Number(createGiamGia) || 0) - (Number(createBaoHiem) || 0));
+        const examCost = Number(createTienKham) || 0;
+        const examBhytEligible = hasBhyt ? examCost : 0;
+
+        const bhytCoveredTotal = medBhytEligible + svcBhytEligible + examBhytEligible;
+        const selfPayTotal = (medTotal - medBhytEligible) + (svcTotal - svcBhytEligible) + (examCost - examBhytEligible);
+        const autoBhytAmount = mucHuong > 0 ? Math.round(bhytCoveredTotal * (mucHuong / 100)) : 0;
+
+        const totalCost = examCost + medTotal + svcTotal;
+        const patientPay = Math.max(0, totalCost - (Number(createGiamGia) || 0) - (Number(createBaoHiem) || 0));
 
         return {
-            total: finalTotal,
-            patientPay: patientPay,
+            total: totalCost,
+            patientPay,
             medTotal,
             svcTotal,
+            examCost,
+            bhytCoveredTotal,
+            selfPayTotal,
+            autoBhytAmount,
+            mucHuong,
+            soTheBhyt,
+            hasBhyt,
         };
     }, [creatingForVisit, createTienKham, createGiamGia, createBaoHiem]);
 
@@ -308,7 +609,7 @@ export default function ReceptionistPayment({
     return (
         <DashboardLayout
             role="receptionist"
-            navItems={navItems}
+            navItems={RECEPTIONIST_NAV_ITEMS}
             user={auth?.user}
             header="Quản lý Hóa đơn & Thu phí"
         >
@@ -389,7 +690,7 @@ export default function ReceptionistPayment({
                                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                             }`}
                         >
-                            <Receipt className="w-4 h-4" /> Danh sách hóa đơn ({invoices.length})
+                            <Receipt className="w-4 h-4" /> Danh sách hóa đơn ({invoiceList.length})
                         </button>
                         <button
                             onClick={() => setActiveTab('unbilled')}
@@ -400,9 +701,9 @@ export default function ReceptionistPayment({
                             }`}
                         >
                             <Clock className="w-4 h-4" /> Chờ lập hóa đơn
-                            {unbilledVisits.length > 0 && (
+                            {unbilledList.length > 0 && (
                                 <span className="px-2 py-0.5 rounded-full text-xs bg-amber-500 text-white font-mono">
-                                    {unbilledVisits.length}
+                                    {unbilledPagination.total}
                                 </span>
                             )}
                         </button>
@@ -442,8 +743,25 @@ export default function ReceptionistPayment({
                                 <option value="DA_HUY">Đã hủy</option>
                             </select>
 
+                            <div className="flex items-center gap-2">
+                                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Hiển thị</label>
+                                <select
+                                    value={perPage}
+                                    onChange={(e) => {
+                                        const nextPerPage = Number(e.target.value);
+                                        setPerPage(nextPerPage);
+                                        handleApplyFilter({ per_page: nextPerPage, page: 1 });
+                                    }}
+                                    className="text-xs rounded-xl border border-gray-200 py-2 px-2 bg-white focus:outline-none focus:border-primary"
+                                >
+                                    {[10, 20, 50].map((value) => (
+                                        <option key={value} value={value}>{value}/trang</option>
+                                    ))}
+                                </select>
+                            </div>
+
                             <button
-                                onClick={handleApplyFilter}
+                                onClick={() => handleApplyFilter()}
                                 className="px-4 py-2 bg-primary text-white text-xs font-semibold rounded-xl hover:bg-primary-hover flex items-center gap-1.5 shadow-sm"
                             >
                                 <Filter className="w-3.5 h-3.5" /> Lọc
@@ -452,6 +770,56 @@ export default function ReceptionistPayment({
                             {(filterDate || filterStatus || searchQuery) && (
                                 <button
                                     onClick={handleResetFilter}
+                                    className="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-xl"
+                                    title="Đặt lại bộ lọc"
+                                >
+                                    <RefreshCw className="w-4 h-4" />
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+                    {activeTab === 'unbilled' && (
+                        <div className="flex flex-1 flex-wrap items-center gap-3 w-full md:justify-end">
+                            <div className="relative min-w-[220px]">
+                                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                <input
+                                    type="text"
+                                    placeholder="Tìm mã BN, tên, SĐT, mã lượt..."
+                                    value={unbilledSearchQuery}
+                                    onChange={(e) => setUnbilledSearchQuery(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleApplyUnbilledFilter({ search: e.currentTarget.value })}
+                                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-gray-200 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                                />
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Hiển thị</label>
+                                <select
+                                    value={unbilledPerPage}
+                                    onChange={(e) => {
+                                        const nextPerPage = Number(e.target.value);
+                                        setUnbilledPerPage(nextPerPage);
+                                        handleApplyUnbilledFilter({ per_page: nextPerPage, page: 1 });
+                                    }}
+                                    className="text-xs rounded-xl border border-gray-200 py-2 px-2 bg-white focus:outline-none focus:border-primary"
+                                >
+                                    {[10, 20, 50].map((value) => (
+                                        <option key={value} value={value}>{value}/trang</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <button
+                                onClick={() => handleApplyUnbilledFilter()}
+                                className="px-4 py-2 bg-primary text-white text-xs font-semibold rounded-xl hover:bg-primary-hover flex items-center gap-1.5 shadow-sm"
+                            >
+                                <Filter className="w-3.5 h-3.5" /> Lọc
+                            </button>
+
+                            {unbilledSearchQuery && (
+                                <button
+                                    onClick={handleResetUnbilledFilter}
                                     className="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-xl"
                                     title="Đặt lại bộ lọc"
                                 >
@@ -482,7 +850,7 @@ export default function ReceptionistPayment({
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
-                                    {invoices.length === 0 ? (
+                                    {invoiceList.length === 0 ? (
                                         <tr>
                                             <td colSpan={10} className="p-8 text-center text-gray-400">
                                                 <Receipt className="w-10 h-10 mx-auto text-gray-300 mb-2" />
@@ -490,7 +858,7 @@ export default function ReceptionistPayment({
                                             </td>
                                         </tr>
                                     ) : (
-                                        invoices.map((inv) => {
+                                        invoiceList.map((inv) => {
                                             const conNo = inv.ConLai ?? Math.max(0, Number(inv.BenhNhanChiTra) - (inv.DaThanhToan || 0));
                                             const ngayTaoStr = inv.NgayTao ? new Date(inv.NgayTao).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : '';
 
@@ -504,10 +872,10 @@ export default function ReceptionistPayment({
                                                     </td>
                                                     <td className="px-5 py-3.5">
                                                         <div className="font-semibold text-gray-900">
-                                                            {inv.luotKham?.benhNhan?.HoTen || 'Bệnh nhân'}
+                                                            {getInvoicePatient(inv)?.HoTen || 'Bệnh nhân'}
                                                         </div>
                                                         <div className="text-[11px] text-gray-500 font-mono">
-                                                            {inv.luotKham?.benhNhan?.SoDienThoai || '--'}
+                                                            {getInvoicePatient(inv)?.SoDienThoai || '--'}
                                                         </div>
                                                     </td>
                                                     <td className="px-5 py-3.5 text-right font-mono text-gray-700">
@@ -564,63 +932,320 @@ export default function ReceptionistPayment({
                     </div>
                 )}
 
+                {invoicePagination.last_page > 1 && activeTab === 'invoices' && (
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs text-gray-600">
+                        <span>Trang {invoicePagination.current_page}/{invoicePagination.last_page} • Tổng {invoicePagination.total} hóa đơn</span>
+                        <div className="flex gap-2">
+                            <button type="button" onClick={() => handlePageChange((invoicePagination.current_page ?? 1) - 1)} disabled={invoicePagination.current_page <= 1} className="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-50">Trước</button>
+                            <button type="button" onClick={() => handlePageChange((invoicePagination.current_page ?? 1) + 1)} disabled={invoicePagination.current_page >= invoicePagination.last_page} className="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-50">Sau</button>
+                        </div>
+                    </div>
+                )}
+
                 {/* 5. Nội dung Tab 2: Lượt khám chờ lập hóa đơn */}
                 {activeTab === 'unbilled' && (
-                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
-                        <div className="border-b border-gray-100 pb-3">
-                            <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
-                                <Clock className="w-5 h-5 text-amber-500" />
-                                Lượt khám đang chờ lập hóa đơn ({unbilledVisits.length})
-                            </h3>
-                            <p className="text-xs text-gray-500 mt-1">
-                                Danh sách bệnh nhân đã tiếp nhận vào phòng khám hoặc đã hoàn tất khám bệnh, sẵn sàng tổng hợp chi phí và lập hóa đơn thu tiền.
-                            </p>
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+                            <div>
+                                <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+                                    <Clock className="w-5 h-5 text-amber-500" />
+                                    Lượt khám đang chờ lập hóa đơn
+                                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                                        {unbilledPagination.total} lượt khám
+                                    </span>
+                                </h3>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Danh sách bệnh nhân đã tiếp nhận vào phòng khám hoặc đã hoàn tất khám bệnh, sẵn sàng tổng hợp chi phí và lập hóa đơn thu tiền.
+                                </p>
+                            </div>
+
+                            {/* View Switcher: Table vs Grid */}
+                            <div className="flex items-center gap-1 bg-gray-100/80 p-1 rounded-xl self-start sm:self-auto border border-gray-200">
+                                <button
+                                    type="button"
+                                    onClick={() => setUnbilledViewMode('table')}
+                                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all ${
+                                        unbilledViewMode === 'table'
+                                            ? 'bg-white text-primary shadow-xs font-bold'
+                                            : 'text-gray-500 hover:text-gray-800'
+                                    }`}
+                                >
+                                    <LayoutList className="w-4 h-4" />
+                                    Dạng bảng ({unbilledPagination.total})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setUnbilledViewMode('grid')}
+                                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all ${
+                                        unbilledViewMode === 'grid'
+                                            ? 'bg-white text-primary shadow-xs font-bold'
+                                            : 'text-gray-500 hover:text-gray-800'
+                                    }`}
+                                >
+                                    <LayoutGrid className="w-4 h-4" />
+                                    Dạng thẻ
+                                </button>
+                            </div>
                         </div>
 
-                        {unbilledVisits.length === 0 ? (
+                        {/* Status Filter Tabs / Pills */}
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setUnbilledStatusFilter('ALL')}
+                                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 ${
+                                    unbilledStatusFilter === 'ALL'
+                                        ? 'bg-gray-900 text-white shadow-sm'
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200/70'
+                                }`}
+                            >
+                                <span>Tất cả</span>
+                                <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                                    unbilledStatusFilter === 'ALL' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
+                                }`}>
+                                    {unbilledCounts.total}
+                                </span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setUnbilledStatusFilter('HOAN_THANH')}
+                                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 ${
+                                    unbilledStatusFilter === 'HOAN_THANH'
+                                        ? 'bg-emerald-600 text-white shadow-sm'
+                                        : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100/70'
+                                }`}
+                            >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Đã khám xong - Sẵn sàng lập HĐ</span>
+                                <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                                    unbilledStatusFilter === 'HOAN_THANH' ? 'bg-white/20 text-white' : 'bg-emerald-200 text-emerald-800'
+                                }`}>
+                                    {unbilledCounts.completed}
+                                </span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setUnbilledStatusFilter('DANG_KHAM')}
+                                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 ${
+                                    unbilledStatusFilter === 'DANG_KHAM'
+                                        ? 'bg-sky-600 text-white shadow-sm'
+                                        : 'bg-sky-50 text-sky-700 hover:bg-sky-100/70'
+                                }`}
+                            >
+                                <Clock className="w-3.5 h-3.5" />
+                                <span>Đang khám</span>
+                                <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                                    unbilledStatusFilter === 'DANG_KHAM' ? 'bg-white/20 text-white' : 'bg-sky-200 text-sky-800'
+                                }`}>
+                                    {unbilledCounts.inProgress}
+                                </span>
+                            </button>
+                        </div>
+
+                        {/* View Mode: Table vs Grid */}
+                        {filteredUnbilledList.length === 0 ? (
                             <div className="p-12 text-center text-gray-400">
                                 <CheckCircle2 className="w-12 h-12 mx-auto text-emerald-400 mb-2" />
-                                <h4 className="font-bold text-gray-700 text-sm">Tất cả lượt khám đã được lập hóa đơn!</h4>
-                                <p className="text-xs text-gray-400 mt-1">Hiện không có lượt khám nào còn tồn đọng chưa xuất hóa đơn.</p>
+                                <h4 className="font-bold text-gray-700 text-sm">Không có lượt khám nào phù hợp bộ lọc!</h4>
+                                <p className="text-xs text-gray-400 mt-1">
+                                    {unbilledStatusFilter !== 'ALL' ? 'Hãy thử đổi sang bộ lọc "Tất cả" để kiểm tra danh sách đầy đủ.' : 'Hiện không có lượt khám nào chờ xuất hóa đơn.'}
+                                </p>
+                            </div>
+                        ) : unbilledViewMode === 'table' ? (
+                            <div className="overflow-x-auto border border-gray-200 rounded-xl">
+                                <table className="w-full text-left text-xs">
+                                    <thead className="bg-gray-50/80 text-gray-600 font-semibold border-b border-gray-200 uppercase tracking-wider text-[11px]">
+                                        <tr>
+                                            <th className="px-4 py-3.5">Mã LK & Tiếp nhận</th>
+                                            <th className="px-4 py-3.5">Bệnh nhân</th>
+                                            <th className="px-4 py-3.5">Bác sĩ khám</th>
+                                            <th className="px-4 py-3.5">Đơn thuốc & Dịch vụ CLS</th>
+                                            <th className="px-4 py-3.5 text-center">Trạng thái khám</th>
+                                            <th className="px-4 py-3.5 text-right">Thao tác</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {filteredUnbilledList.map((visit) => {
+                                            const patient = getPatient(visit);
+                                            const doctor = getDoctor(visit);
+                                            const medCount = getActiveMedicineCount(visit);
+                                            const svcCount = getActiveServiceCount(visit);
+                                            const timeStr = formatDateTime(visit.ThoiGianTiepNhan);
+
+                                            return (
+                                                <tr key={visit.MaLuotKham} className="hover:bg-blue-50/30 transition-colors">
+                                                    <td className="px-4 py-3.5">
+                                                        <div className="font-bold font-mono text-primary text-sm">
+                                                            #LK{visit.MaLuotKham}
+                                                        </div>
+                                                        <div className="text-[11px] text-gray-500 flex items-center gap-1 mt-0.5">
+                                                            <Clock className="w-3 h-3 text-gray-400" />
+                                                            {timeStr}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3.5">
+                                                        <div className="flex items-center gap-2.5">
+                                                            <div className="w-8 h-8 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-xs">
+                                                                {patient?.HoTen ? patient.HoTen.charAt(0).toUpperCase() : <User className="w-4 h-4" />}
+                                                            </div>
+                                                            <div>
+                                                                <div className="font-bold text-gray-900 text-sm">
+                                                                    {patient?.HoTen || 'Bệnh nhân chưa đặt tên'}
+                                                                </div>
+                                                                <div className="text-[11px] text-gray-500 flex items-center gap-2 mt-0.5 flex-wrap">
+                                                                    <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
+                                                                        BN-{patient?.MaBenhNhan || '--'}
+                                                                    </span>
+                                                                    <span>•</span>
+                                                                    <span>{patient?.GioiTinh === 'NAM' ? 'Nam' : patient?.GioiTinh === 'NU' ? 'Nữ' : patient?.GioiTinh || '--'}</span>
+                                                                    <span>•</span>
+                                                                    <span>SĐT: <span className="font-mono">{patient?.SoDienThoai || 'Chưa cập nhật'}</span></span>
+                                                                    <span>•</span>
+                                                                    {visit.CoBHYT || visit.SoTheBHYT || patient?.SoTheBHYT ? (
+                                                                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                                                            BHYT {visit.MucHuongBHYT ?? patient?.MucHuongBHYT ?? 80}%
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded text-[10px]">
+                                                                            Tự túc
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3.5">
+                                                        <div className="flex items-center gap-2 text-gray-800">
+                                                            <Stethoscope className="w-4 h-4 text-emerald-600 shrink-0" />
+                                                            <span className="font-semibold">
+                                                                {doctor?.HoTen ? `BS. ${doctor.HoTen}` : <span className="text-gray-400 italic">Chưa phân công</span>}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3.5">
+                                                        <div className="flex flex-wrap items-center gap-1.5">
+                                                            {medCount > 0 ? (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-medium">
+                                                                    <Pill className="w-3 h-3 text-amber-600" />
+                                                                    {medCount} thuốc
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-[11px] text-gray-400">Không có thuốc</span>
+                                                            )}
+                                                            <span className="text-gray-300">•</span>
+                                                            {svcCount > 0 ? (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 text-purple-800 border border-purple-200 text-[11px] font-medium">
+                                                                    <FlaskConical className="w-3 h-3 text-purple-600" />
+                                                                    {svcCount} dịch vụ CLS
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-[11px] text-gray-400">Không có CLS</span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3.5 text-center">
+                                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                                                            visit.TrangThai === 'HOAN_THANH'
+                                                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                                                : 'bg-sky-100 text-sky-800 border border-sky-200'
+                                                        }`}>
+                                                            {visit.TrangThai === 'HOAN_THANH' ? (
+                                                                <>
+                                                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                                                    Đã khám xong
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <Clock className="w-3.5 h-3.5 text-sky-600" />
+                                                                    Đang khám
+                                                                </>
+                                                            )}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3.5 text-right">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleOpenCreateInvoiceModal(visit)}
+                                                            className="px-3.5 py-1.5 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary-hover inline-flex items-center gap-1.5 shadow-sm transition-all"
+                                                        >
+                                                            <Receipt className="w-3.5 h-3.5" />
+                                                            Lập hóa đơn
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
                             </div>
                         ) : (
+                            /* Grid View */
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {unbilledVisits.map((visit) => {
-                                    const medCount = visit.donThuoc?.chiTietDonThuocs?.length || 0;
-                                    const svcCount = visit.chiDinhDichVus?.length || 0;
+                                {filteredUnbilledList.map((visit) => {
+                                    const patient = getPatient(visit);
+                                    const doctor = getDoctor(visit);
+                                    const medCount = getActiveMedicineCount(visit);
+                                    const svcCount = getActiveServiceCount(visit);
 
                                     return (
-                                        <div key={visit.MaLuotKham} className="border border-gray-200 rounded-2xl p-4 bg-gray-50/50 hover:bg-white hover:border-primary/50 transition-all flex flex-col justify-between space-y-3 shadow-xs">
-                                            <div>
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-xs font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
+                                        <div key={visit.MaLuotKham} className="border border-gray-200 rounded-2xl p-4 bg-white hover:border-primary/50 hover:shadow-md transition-all flex flex-col justify-between space-y-3">
+                                            <div className="space-y-3">
+                                                <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                                                    <span className="text-xs font-mono font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-lg">
                                                         LK #{visit.MaLuotKham}
                                                     </span>
-                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                                         visit.TrangThai === 'HOAN_THANH' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'
                                                     }`}>
+                                                        {visit.TrangThai === 'HOAN_THANH' ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
                                                         {visit.TrangThai === 'HOAN_THANH' ? 'Đã khám xong' : 'Đang khám'}
                                                     </span>
                                                 </div>
 
-                                                <h4 className="font-bold text-gray-900 text-base mt-2">
-                                                    {visit.benhNhan?.HoTen}
-                                                </h4>
-                                                <p className="text-xs text-gray-500">
-                                                    SĐT: {visit.benhNhan?.SoDienThoai || 'Chưa cập nhật'}
-                                                </p>
-                                                <p className="text-xs text-gray-600 mt-1">
-                                                    Bác sĩ: <span className="font-semibold">{visit.bacSi?.HoTen || '--'}</span>
-                                                </p>
+                                                <div className="flex items-start gap-3">
+                                                    <div className="w-10 h-10 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm shrink-0">
+                                                        {patient?.HoTen ? patient.HoTen.charAt(0).toUpperCase() : <User className="w-5 h-5" />}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                            <h4 className="font-bold text-gray-900 text-sm truncate">
+                                                                {patient?.HoTen || 'Bệnh nhân'}
+                                                            </h4>
+                                                            {visit.CoBHYT || visit.SoTheBHYT || patient?.SoTheBHYT ? (
+                                                                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded text-[10px] font-bold">
+                                                                    BHYT {visit.MucHuongBHYT ?? patient?.MucHuongBHYT ?? 80}%
+                                                                </span>
+                                                            ) : (
+                                                                <span className="bg-gray-100 text-gray-500 px-1.5 py-0.2 rounded text-[10px]">
+                                                                    Tự túc
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-xs text-gray-500 font-mono mt-0.5">
+                                                            SĐT: {patient?.SoDienThoai || 'Chưa cập nhật'}
+                                                        </p>
+                                                        <p className="text-xs text-gray-600 mt-1 flex items-center gap-1">
+                                                            <Stethoscope className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                                            <span>BS: <span className="font-semibold text-gray-800">{doctor?.HoTen || '--'}</span></span>
+                                                        </p>
+                                                    </div>
+                                                </div>
 
-                                                <div className="flex gap-2 text-[11px] text-gray-500 mt-3 pt-2 border-t border-gray-200">
-                                                    <span>💊 {medCount} loại thuốc</span>
+                                                <div className="flex items-center gap-2 text-[11px] text-gray-600 pt-2 border-t border-gray-100">
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-800 font-medium">
+                                                        <Pill className="w-3 h-3 text-amber-600" /> {medCount} thuốc
+                                                    </span>
                                                     <span>•</span>
-                                                    <span>🔬 {svcCount} dịch vụ</span>
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-50 text-purple-800 font-medium">
+                                                        <FlaskConical className="w-3 h-3 text-purple-600" /> {svcCount} dịch vụ
+                                                    </span>
                                                 </div>
                                             </div>
 
                                             <button
+                                                type="button"
                                                 onClick={() => handleOpenCreateInvoiceModal(visit)}
                                                 className="w-full py-2 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary-hover flex items-center justify-center gap-1.5 shadow-sm transition-all"
                                             >
@@ -631,6 +1256,16 @@ export default function ReceptionistPayment({
                                 })}
                             </div>
                         )}
+                    </div>
+                )}
+
+                {unbilledPagination.last_page > 1 && activeTab === 'unbilled' && (
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs text-gray-600">
+                        <span>Trang {unbilledPagination.current_page}/{unbilledPagination.last_page} • Tổng {unbilledPagination.total} lượt khám</span>
+                        <div className="flex gap-2">
+                            <button type="button" onClick={() => handleUnbilledPageChange((unbilledPagination.current_page ?? 1) - 1)} disabled={unbilledPagination.current_page <= 1} className="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-50">Trước</button>
+                            <button type="button" onClick={() => handleUnbilledPageChange((unbilledPagination.current_page ?? 1) + 1)} disabled={unbilledPagination.current_page >= unbilledPagination.last_page} className="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-50">Sau</button>
+                        </div>
                     </div>
                 )}
             </div>
@@ -659,13 +1294,13 @@ export default function ReceptionistPayment({
                         <div className="bg-gray-50 p-4 rounded-xl text-xs grid grid-cols-2 gap-3">
                             <div>
                                 <p className="text-gray-500">Bệnh nhân:</p>
-                                <p className="font-bold text-gray-900 text-sm">{viewingInvoice.luotKham?.benhNhan?.HoTen}</p>
-                                <p className="text-gray-600">SĐT: {viewingInvoice.luotKham?.benhNhan?.SoDienThoai}</p>
+                                <p className="font-bold text-gray-900 text-sm">{getInvoicePatient(viewingInvoice)?.HoTen || 'Bệnh nhân'}</p>
+                                <p className="text-gray-600">SĐT: {getInvoicePatient(viewingInvoice)?.SoDienThoai || '--'}</p>
                             </div>
                             <div>
                                 <p className="text-gray-500">Địa chỉ:</p>
-                                <p className="text-gray-700">{viewingInvoice.luotKham?.benhNhan?.DiaChi || 'Chưa cập nhật'}</p>
-                                <p className="text-gray-600">Bác sĩ khám: {viewingInvoice.luotKham?.bacSi?.HoTen || '--'}</p>
+                                <p className="text-gray-700">{getInvoicePatient(viewingInvoice)?.DiaChi || 'Chưa cập nhật'}</p>
+                                <p className="text-gray-600">Bác sĩ khám: {getInvoiceDoctor(viewingInvoice)?.HoTen || '--'}</p>
                             </div>
                         </div>
 
@@ -819,7 +1454,7 @@ export default function ReceptionistPayment({
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-gray-600">Bệnh nhân:</span>
-                                <span className="font-bold text-gray-900">{payingInvoice.luotKham?.benhNhan?.HoTen}</span>
+                                <span className="font-bold text-gray-900">{getInvoicePatient(payingInvoice)?.HoTen || 'Bệnh nhân'}</span>
                             </div>
                             <div className="flex justify-between border-t border-emerald-100 pt-1 mt-1 text-sm font-bold text-emerald-800">
                                 <span>Số tiền còn nợ:</span>
@@ -932,24 +1567,38 @@ export default function ReceptionistPayment({
                             </button>
                         </div>
 
-                        <div className="bg-blue-50/60 p-3 rounded-xl text-xs space-y-1">
+                        <div className="bg-blue-50/60 p-3 rounded-xl text-xs space-y-1.5 border border-blue-100">
                             <div className="flex justify-between">
                                 <span className="text-gray-500">Lượt khám:</span>
                                 <span className="font-bold text-gray-900">#LK{creatingForVisit.MaLuotKham}</span>
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-gray-500">Bệnh nhân:</span>
-                                <span className="font-bold text-gray-900">{creatingForVisit.benhNhan?.HoTen}</span>
+                                <span className="font-bold text-gray-900">{getPatient(creatingForVisit)?.HoTen || 'Bệnh nhân'}</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-gray-500">Bác sĩ:</span>
-                                <span className="text-gray-700">{creatingForVisit.bacSi?.HoTen || '--'}</span>
+                                <span className="text-gray-500">Bác sĩ khám:</span>
+                                <span className="text-gray-700">{getDoctor(creatingForVisit)?.HoTen || '--'}</span>
+                            </div>
+                            <div className="flex justify-between border-t border-blue-100/80 pt-1">
+                                <span className="text-gray-500">Chế độ BHYT:</span>
+                                <span className="font-bold text-xs">
+                                    {estimatedCreateSummary.hasBhyt ? (
+                                        <span className="text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                                            Hưởng {estimatedCreateSummary.mucHuong}% (Thẻ: {estimatedCreateSummary.soTheBhyt || 'Có BHYT'})
+                                        </span>
+                                    ) : (
+                                        <span className="text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">
+                                            Tự túc (Không áp dụng BHYT)
+                                        </span>
+                                    )}
+                                </span>
                             </div>
                         </div>
 
                         {/* Tổng quan chi phí tự động từ DB */}
                         <div className="border border-gray-200 rounded-xl p-3 text-xs space-y-2 bg-gray-50">
-                            <h4 className="font-bold text-gray-800 text-[11px] uppercase tracking-wider">Chi phí tự động tổng hợp:</h4>
+                            <h4 className="font-bold text-gray-800 text-[11px] uppercase tracking-wider">Phân tích chi phí & Danh mục BHYT:</h4>
                             <div className="flex justify-between text-gray-600">
                                 <span>1. Tiền thuốc (từ đơn thuốc):</span>
                                 <span className="font-mono font-semibold">{(estimatedCreateSummary.medTotal || 0).toLocaleString('vi-VN')} đ</span>
@@ -957,6 +1606,10 @@ export default function ReceptionistPayment({
                             <div className="flex justify-between text-gray-600">
                                 <span>2. Cận lâm sàng & Kỹ thuật:</span>
                                 <span className="font-mono font-semibold">{(estimatedCreateSummary.svcTotal || 0).toLocaleString('vi-VN')} đ</span>
+                            </div>
+                            <div className="flex justify-between text-emerald-700 bg-emerald-50/80 p-2 rounded-lg font-medium border border-emerald-100">
+                                <span>• BHYT thanh toán tự động ({estimatedCreateSummary.mucHuong}%):</span>
+                                <span className="font-mono font-bold">{(estimatedCreateSummary.autoBhytAmount || 0).toLocaleString('vi-VN')} đ</span>
                             </div>
                         </div>
 
@@ -988,13 +1641,22 @@ export default function ReceptionistPayment({
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-semibold text-gray-700 mb-1">Bảo hiểm chi trả (VNĐ)</label>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="text-xs font-semibold text-gray-700">Bảo hiểm chi trả (VNĐ)</label>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCreateBaoHiem(estimatedCreateSummary.autoBhytAmount)}
+                                            className="text-[10px] text-primary hover:underline font-bold"
+                                        >
+                                            Tự tính
+                                        </button>
+                                    </div>
                                     <input
                                         type="number"
                                         min={0}
                                         value={createBaoHiem}
                                         onChange={(e) => setCreateBaoHiem(Number(e.target.value))}
-                                        className="w-full text-xs rounded-xl border-gray-200 py-2 px-3 font-mono"
+                                        className="w-full text-xs rounded-xl border-gray-200 py-2 px-3 font-mono font-bold text-emerald-700"
                                     />
                                 </div>
                             </div>
@@ -1061,13 +1723,13 @@ export default function ReceptionistPayment({
                     {/* Thông tin bệnh nhân & lượt khám */}
                     <div className="grid grid-cols-2 gap-2 mb-4 text-[11px]">
                         <div>
-                            <p><span className="font-semibold">Họ tên người bệnh:</span> {viewingInvoice.luotKham?.benhNhan?.HoTen}</p>
-                            <p><span className="font-semibold">Mã bệnh nhân:</span> #BN{viewingInvoice.luotKham?.benhNhan?.MaBenhNhan}</p>
-                            <p><span className="font-semibold">Số điện thoại:</span> {viewingInvoice.luotKham?.benhNhan?.SoDienThoai || '--'}</p>
-                            <p><span className="font-semibold">Địa chỉ:</span> {viewingInvoice.luotKham?.benhNhan?.DiaChi || 'Chưa cập nhật'}</p>
+                            <p><span className="font-semibold">Họ tên người bệnh:</span> {getInvoicePatient(viewingInvoice)?.HoTen || '--'}</p>
+                            <p><span className="font-semibold">Mã bệnh nhân:</span> #BN{getInvoicePatient(viewingInvoice)?.MaBenhNhan || '--'}</p>
+                            <p><span className="font-semibold">Số điện thoại:</span> {getInvoicePatient(viewingInvoice)?.SoDienThoai || '--'}</p>
+                            <p><span className="font-semibold">Địa chỉ:</span> {getInvoicePatient(viewingInvoice)?.DiaChi || 'Chưa cập nhật'}</p>
                         </div>
                         <div>
-                            <p><span className="font-semibold">Bác sĩ khám:</span> {viewingInvoice.luotKham?.bacSi?.HoTen || '--'}</p>
+                            <p><span className="font-semibold">Bác sĩ khám:</span> {getInvoiceDoctor(viewingInvoice)?.HoTen || '--'}</p>
                             <p><span className="font-semibold">Chuyên khoa:</span> {viewingInvoice.luotKham?.bacSi?.chuyenKhoa?.TenChuyenKhoa || '--'}</p>
                             <p><span className="font-semibold">Ngày tạo HĐ:</span> {viewingInvoice.NgayTao}</p>
                             <p><span className="font-semibold">Ngày giờ in:</span> {new Date().toLocaleString('vi-VN')}</p>

@@ -1,14 +1,11 @@
 import DashboardLayout from '@/Layouts/DashboardLayout';
+import QuickAttendanceCard from '@/Components/QuickAttendanceCard';
 import { Head, Link } from '@inertiajs/react';
 import { 
     Users, 
     CalendarClock, 
     CheckCircle2, 
     Search,
-    LayoutDashboard,
-    Calendar,
-    CreditCard,
-    FileText,
     Clock,
     UserCheck,
     XCircle,
@@ -17,6 +14,7 @@ import {
     Receipt
 } from 'lucide-react';
 import { useState } from 'react';
+import { RECEPTIONIST_NAV_ITEMS } from '@/constants/navigation';
 
 interface AppointmentItem {
     id: string;
@@ -29,7 +27,7 @@ interface AppointmentItem {
     rawStatus: string;
 }
 
-interface ReceptionistDashboardProps {
+export interface ReceptionistDashboardProps {
     auth: any;
     stats?: {
         todayAppointments: number;
@@ -40,16 +38,22 @@ interface ReceptionistDashboardProps {
         todayRevenue: number;
     };
     appointments?: AppointmentItem[];
+    role?: 'receptionist' | 'admin';
+    navItems?: any[];
+    queueUrl?: string;
+    header?: string;
 }
 
-export default function ReceptionistDashboard({ auth, stats, appointments = [] }: ReceptionistDashboardProps) {
+export default function ReceptionistDashboard({ 
+    auth, 
+    stats, 
+    appointments = [],
+    role = 'receptionist',
+    navItems = RECEPTIONIST_NAV_ITEMS,
+    queueUrl = '/receptionist/queue',
+    header = 'Bàn làm việc Lễ tân'
+}: ReceptionistDashboardProps) {
     const [searchTerm, setSearchTerm] = useState('');
-
-    const navItems = [
-        { name: 'Tổng quan', href: '/receptionist/dashboard', icon: LayoutDashboard },
-        { name: 'Lịch hẹn & Tiếp nhận', href: '/receptionist/queue', icon: Calendar },
-        { name: 'Thu ngân & Viện phí', href: '/receptionist/payment', icon: CreditCard },
-    ];
 
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount || 0);
@@ -116,18 +120,25 @@ export default function ReceptionistDashboard({ auth, stats, appointments = [] }
                item.doctor.toLowerCase().includes(q);
     });
 
-    const receptionistName = auth?.user?.TenDangNhap || 'Nhân viên lễ tân';
+    const userName = auth?.user?.name || auth?.user?.TenDangNhap || (role === 'admin' ? 'Quản trị viên' : 'Nhân viên lễ tân');
 
     return (
         <DashboardLayout
-            role="receptionist"
+            role={role}
             navItems={navItems}
-            user={{ name: receptionistName, code: 'LT001' }}
-            header="Bàn làm việc Lễ tân"
+            user={{ name: userName, code: role === 'admin' ? 'ADMIN' : 'LT001' }}
+            header={header}
         >
-            <Head title="Receptionist Dashboard - SmartCare" />
+            <Head title={`${header} - SmartCare`} />
 
             <div className="max-w-7xl mx-auto space-y-6">
+                {/* 0. Chấm công nhanh ca trực hôm nay */}
+                <QuickAttendanceCard
+                    rolePrefix="receptionist"
+                    todaySchedule={auth?.todaySchedule}
+                    todayAttendance={auth?.todayAttendance}
+                />
+
                 {/* Thẻ thống kê 6 chỉ số */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                     {statCards.map((stat, index) => (
@@ -170,7 +181,7 @@ export default function ReceptionistDashboard({ auth, stats, appointments = [] }
                                 />
                             </div>
                             <Link 
-                                href="/receptionist/queue" 
+                                href={queueUrl} 
                                 className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary-hover transition-colors shrink-0 shadow-sm"
                             >
                                 <span>Quản lý hàng chờ</span>
@@ -218,7 +229,7 @@ export default function ReceptionistDashboard({ auth, stats, appointments = [] }
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <Link 
-                                                    href={`/receptionist/queue?search=${encodeURIComponent(item.name)}`}
+                                                    href={queueUrl}
                                                     className="inline-flex items-center justify-center px-3 py-1.5 border border-primary/20 text-xs font-bold rounded-lg text-primary hover:bg-primary-light/50 transition-colors"
                                                 >
                                                     Xem hàng chờ

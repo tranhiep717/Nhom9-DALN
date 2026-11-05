@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ChiDinhDichVu;
 use App\Models\DichVu;
+use App\Models\LichLamViec;
 use App\Models\LuotKham;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
@@ -27,15 +28,21 @@ class CanLamSangController extends Controller
         $today = now()->toDateString();
         $dateParam = $request->input('date', $today);
         $statusParam = $request->input('status');
-        $searchParam = $request->input('search');
+        $searchParam = trim((string) $request->input('search', ''));
         $serviceParam = $request->input('service_id');
+        $shiftParam = $request->input('shift_id');
+        $perPage = (int) $request->input('per_page', 10);
+        if (!in_array($perPage, [10, 20, 50], true)) {
+            $perPage = 10;
+        }
 
         $query = ChiDinhDichVu::query()->with([
             'dichVu:MaDichVu,TenDichVu,DonGia,MoTa',
             'bacSi:MaBacSi,HoTen,HocVi',
             'nhanVienThucHien:MaTaiKhoan,TenDangNhap,Email',
-            'luotKham:MaLuotKham,MaBenhNhan,MaBacSi,ThoiGianTiepNhan,TrangThai',
+            'luotKham:MaLuotKham,MaBenhNhan,MaBacSi,MaCaKham,ThoiGianTiepNhan,TrangThai,SoPhieu',
             'luotKham.benhNhan:MaBenhNhan,HoTen,SoDienThoai,GioiTinh,NgaySinh,DiaChi',
+            'luotKham.caKham:MaCaKham,GioBatDau,GioKetThuc,TrangThai',
         ]);
 
         // Lọc theo ngày chỉ định
@@ -59,15 +66,39 @@ class CanLamSangController extends Controller
             $query->where('MaDichVu', $serviceParam);
         }
 
-        // Tìm kiếm theo tên bệnh nhân hoặc số điện thoại
-        if ($searchParam) {
-            $query->whereHas('luotKham.benhNhan', function ($q) use ($searchParam) {
-                $q->where('HoTen', 'like', "%{$searchParam}%")
-                  ->orWhere('SoDienThoai', 'like', "%{$searchParam}%");
+        // Lọc theo ca CLS (nếu có dữ liệu ca từ lượt khám)
+        if ($shiftParam) {
+            $query->whereHas('luotKham', function ($q) use ($shiftParam) {
+                $q->where('MaCaKham', $shiftParam);
             });
         }
 
-        $requests = $query->orderBy('NgayChiDinh', 'desc')->get();
+        // Tìm kiếm theo mã BN, tên, số điện thoại, mã lượt khám, số phiếu, mã chỉ định
+        if ($searchParam !== '') {
+            $cleanDigits = preg_replace('/[^0-9]/', '', $searchParam);
+            $query->where(function ($q) use ($searchParam, $cleanDigits) {
+                $q->where('MaChiDinh', 'like', "%{$searchParam}%")
+                  ->orWhere('MaLuotKham', 'like', "%{$searchParam}%")
+                  ->orWhereHas('luotKham', function ($sub) use ($searchParam, $cleanDigits) {
+                      $sub->where('SoPhieu', 'like', "%{$searchParam}%")
+                          ->orWhere('MaLuotKham', 'like', "%{$searchParam}%");
+
+                      if ($cleanDigits !== '') {
+                          $sub->orWhere('MaLuotKham', (int) $cleanDigits);
+                      }
+                  })
+                  ->orWhereHas('luotKham.benhNhan', function ($sub) use ($searchParam, $cleanDigits) {
+                      $sub->where('HoTen', 'like', "%{$searchParam}%")
+                          ->orWhere('SoDienThoai', 'like', "%{$searchParam}%");
+
+                      if ($cleanDigits !== '') {
+                          $sub->orWhere('MaBenhNhan', (int) $cleanDigits);
+                      }
+                  });
+            });
+        }
+
+        $requests = $query->orderBy('NgayChiDinh', 'desc')->paginate($perPage)->withQueryString();
 
         // Thống kê nhanh hôm nay
         $todayQuery = ChiDinhDichVu::whereDate('NgayChiDinh', $today);
@@ -104,6 +135,185 @@ class CanLamSangController extends Controller
                 'status' => $statusParam,
                 'search' => $searchParam,
                 'service_id' => $serviceParam ? (int)$serviceParam : null,
+            ],
+        ]);
+    }
+
+    protected function buildClsListQuery(Request $request, ?array $statuses = null)
+    {
+        $query = ChiDinhDichVu::query()->with([
+            'dichVu:MaDichVu,TenDichVu,DonGia,MoTa',
+            'bacSi:MaBacSi,HoTen,HocVi',
+            'nhanVienThucHien:MaTaiKhoan,TenDangNhap,Email',
+            'luotKham:MaLuotKham,MaBenhNhan,MaBacSi,MaCaKham,ThoiGianTiepNhan,TrangThai,SoPhieu',
+            'luotKham.benhNhan:MaBenhNhan,HoTen,SoDienThoai,GioiTinh,NgaySinh,DiaChi',
+            'luotKham.caKham:MaCaKham,GioBatDau,GioKetThuc,TrangThai',
+        ]);
+
+        if ($statuses) {
+            $query->whereIn('TrangThai', $statuses);
+        }
+
+        $dateParam = $request->input('date');
+        if ($dateParam && $dateParam !== 'all') {
+            $query->whereDate('NgayChiDinh', $dateParam);
+        }
+
+        $serviceParam = $request->input('service_id');
+        if ($serviceParam) {
+            $query->where('MaDichVu', $serviceParam);
+        }
+
+        $searchParam = trim((string) $request->input('search', ''));
+        if ($searchParam !== '') {
+            $cleanDigits = preg_replace('/[^0-9]/', '', $searchParam);
+            $query->where(function ($q) use ($searchParam, $cleanDigits) {
+                $q->where('MaChiDinh', 'like', "%{$searchParam}%")
+                  ->orWhere('MaLuotKham', 'like', "%{$searchParam}%")
+                  ->orWhereHas('luotKham', function ($sub) use ($searchParam, $cleanDigits) {
+                      $sub->where('SoPhieu', 'like', "%{$searchParam}%")
+                          ->orWhere('MaLuotKham', 'like', "%{$searchParam}%");
+
+                      if ($cleanDigits !== '') {
+                          $sub->orWhere('MaLuotKham', (int) $cleanDigits);
+                      }
+                  })
+                  ->orWhereHas('luotKham.benhNhan', function ($sub) use ($searchParam, $cleanDigits) {
+                      $sub->where('HoTen', 'like', "%{$searchParam}%")
+                          ->orWhere('SoDienThoai', 'like', "%{$searchParam}%");
+
+                      if ($cleanDigits !== '') {
+                          $sub->orWhere('MaBenhNhan', (int) $cleanDigits);
+                      }
+                  });
+            });
+        }
+
+        return $query;
+    }
+
+    public function schedule(Request $request): InertiaResponse
+    {
+        $user = $request->user();
+        if (!$user || (!$user->isNhanVienCanLamSang() && !$user->isQuanTriVien())) {
+            abort(403, 'Bạn không có quyền truy cập lịch làm việc CLS.');
+        }
+
+        $dateParam = $request->input('date');
+        $fromDate = $request->input('from_date', now()->startOfWeek()->toDateString());
+        $toDate = $request->input('to_date', now()->endOfWeek()->toDateString());
+
+        // Lấy lịch làm việc của chính kỹ thuật viên này
+        $query = LichLamViec::query()
+            ->with(['taiKhoan.vaiTro', 'caKhams'])
+            ->where(function ($q) use ($user, $request) {
+                if ($user->isQuanTriVien() && $accId = $request->input('account_id')) {
+                    $q->where('MaTaiKhoan', $accId);
+                } else {
+                    $q->where('MaTaiKhoan', $user->MaTaiKhoan);
+                }
+            });
+
+        if ($dateParam && $dateParam !== 'all') {
+            $query->whereDate('NgayLamViec', $dateParam);
+        } else {
+            $query->whereDate('NgayLamViec', '>=', $fromDate)
+                  ->whereDate('NgayLamViec', '<=', $toDate);
+        }
+
+        $schedules = $query->orderBy('NgayLamViec', 'asc')->orderBy('GioBatDau', 'asc')->get();
+
+        // Đơn chờ tôi xác nhận đổi ca
+        $requestsForMe = \App\Models\DonTuNhanSu::with(['taiKhoan.vaiTro', 'lichLamViec', 'lichDoiSang'])
+            ->where('TaiKhoanDoiCung', $user->MaTaiKhoan)
+            ->where('TrangThai', 'CHO_DONG_NGHIEP_XAC_NHAN')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        // Đơn cá nhân của tôi
+        $myRequests = \App\Models\DonTuNhanSu::with(['taiKhoanDoiCung', 'lichLamViec', 'lichDoiSang'])
+            ->where('MaTaiKhoan', $user->MaTaiKhoan)
+            ->orderBy('created_at', 'desc')
+            ->limit(30)
+            ->get();
+
+        $colleagues = \App\Http\Controllers\ChamCongController::getEligibleColleagues($user);
+
+        return Inertia::render('CanLamSang/Schedule', [
+            'schedules' => $schedules,
+            'requestsForMe' => $requestsForMe,
+            'myRequests' => $myRequests,
+            'colleagues' => $colleagues,
+            'filters' => [
+                'date' => $dateParam,
+                'from_date' => $fromDate,
+                'to_date' => $toDate,
+            ],
+        ]);
+    }
+
+    public function pending(Request $request): InertiaResponse
+    {
+        $user = $request->user();
+        if (!$user || (!$user->isNhanVienCanLamSang() && !$user->isQuanTriVien())) {
+            abort(403, 'Bạn không có quyền xem danh sách chờ thực hiện CLS.');
+        }
+
+        $query = $this->buildClsListQuery($request, ['CHO_TIEP_NHAN', 'CHO_THUC_HIEN']);
+        $requests = $query->orderBy('NgayChiDinh', 'desc')->paginate((int) $request->input('per_page', 10))->withQueryString();
+
+        return Inertia::render('CanLamSang/Pending', [
+            'requests' => $requests,
+            'services' => DichVu::where('TrangThai', 'HOAT_DONG')->select('MaDichVu', 'TenDichVu')->orderBy('TenDichVu', 'asc')->get(),
+            'filters' => [
+                'date' => $request->input('date'),
+                'service_id' => $request->input('service_id'),
+                'search' => trim((string) $request->input('search', '')),
+                'per_page' => $request->input('per_page', 10),
+            ],
+        ]);
+    }
+
+    public function processing(Request $request): InertiaResponse
+    {
+        $user = $request->user();
+        if (!$user || (!$user->isNhanVienCanLamSang() && !$user->isQuanTriVien())) {
+            abort(403, 'Bạn không có quyền xem danh sách đang thực hiện CLS.');
+        }
+
+        $query = $this->buildClsListQuery($request, ['DA_TIEP_NHAN', 'DANG_THUC_HIEN']);
+        $requests = $query->orderBy('NgayChiDinh', 'desc')->paginate((int) $request->input('per_page', 10))->withQueryString();
+
+        return Inertia::render('CanLamSang/Processing', [
+            'requests' => $requests,
+            'services' => DichVu::where('TrangThai', 'HOAT_DONG')->select('MaDichVu', 'TenDichVu')->orderBy('TenDichVu', 'asc')->get(),
+            'filters' => [
+                'date' => $request->input('date'),
+                'service_id' => $request->input('service_id'),
+                'search' => trim((string) $request->input('search', '')),
+                'per_page' => $request->input('per_page', 10),
+            ],
+        ]);
+    }
+
+    public function results(Request $request): InertiaResponse
+    {
+        $user = $request->user();
+        if (!$user || (!$user->isNhanVienCanLamSang() && !$user->isQuanTriVien())) {
+            abort(403, 'Bạn không có quyền xem kết quả CLS.');
+        }
+
+        $query = $this->buildClsListQuery($request, ['DA_CO_KET_QUA', 'HOAN_THANH']);
+        $requests = $query->orderBy('NgayChiDinh', 'desc')->paginate((int) $request->input('per_page', 10))->withQueryString();
+
+        return Inertia::render('CanLamSang/Results', [
+            'requests' => $requests,
+            'services' => DichVu::where('TrangThai', 'HOAT_DONG')->select('MaDichVu', 'TenDichVu')->orderBy('TenDichVu', 'asc')->get(),
+            'filters' => [
+                'date' => $request->input('date'),
+                'service_id' => $request->input('service_id'),
+                'search' => trim((string) $request->input('search', '')),
+                'per_page' => $request->input('per_page', 10),
             ],
         ]);
     }
@@ -243,24 +453,27 @@ class CanLamSangController extends Controller
                 ->count();
 
             if ($pendingCount === 0 && $luotKham && in_array($luotKham->TrangThai, ['CHO_KET_QUA', 'DANG_KHAM'])) {
-                // TẤT CẢ DỊCH VỤ ĐÃ CÓ KẾT QUẢ -> CHUYỂN SANG CHO_KHAM_LAI
-                $luotKham->update(['TrangThai' => 'CHO_KHAM_LAI']);
+                // TẤT CẢ DỊCH VỤ ĐÃ CÓ KẾT QUẢ:
+                // Theo chính sách Phase 5.3: KHÔNG tự động chuyển sang CHO_KHAM_LAI.
+                // Giữ nguyên trạng thái CHO_KET_QUA cho đến khi bệnh nhân thực sự quay lại và được tiếp nhận vào FIFO.
 
-                // Thông báo Bác sĩ phụ trách: Bệnh nhân đã sẵn sàng để khám lại
-                NotificationService::sendToDoctor(
-                    $luotKham->MaBacSi,
-                    'KHAM_BENH',
-                    'Đã có đầy đủ kết quả cận lâm sàng',
-                    "Bệnh nhân {$tenBN} đã hoàn tất toàn bộ chỉ định cận lâm sàng và đang ở hàng chờ khám lại.",
-                    "/doctor/examine?visit_id={$luotKham->MaLuotKham}"
-                );
+                // Thông báo Bác sĩ phụ trách: Bệnh nhân đã hoàn tất CLS (chờ bệnh nhân quay lại)
+                if ($luotKham->MaBacSi) {
+                    NotificationService::sendToDoctor(
+                        $luotKham->MaBacSi,
+                        'KHAM_BENH',
+                        'Đã có đầy đủ kết quả cận lâm sàng',
+                        "Bệnh nhân {$tenBN} đã hoàn tất toàn bộ chỉ định cận lâm sàng (chờ bệnh nhân quay lại phòng khám).",
+                        "/doctor/examine?visit_id={$luotKham->MaLuotKham}"
+                    );
+                }
 
-                // Thông báo Bệnh nhân
+                // Thông báo Bệnh nhân: Có kết quả, hướng dẫn quay lại phòng khám
                 NotificationService::sendToPatient(
                     $luotKham->MaBenhNhan,
                     'KHAM_BENH',
                     'Đã có kết quả cận lâm sàng',
-                    "Tất cả kết quả xét nghiệm/kỹ thuật của bạn đã có. Vui lòng quay lại phòng khám của Bác sĩ để kết luận và kê đơn.",
+                    "Tất cả kết quả xét nghiệm/kỹ thuật của bạn đã có. Vui lòng quay lại quầy/phòng khám để được tiếp nhận khám lại.",
                     "/appointments"
                 );
             } else {
@@ -320,7 +533,11 @@ class CanLamSangController extends Controller
                 $hasCompleted = ChiDinhDichVu::where('MaLuotKham', $chiDinh->MaLuotKham)
                     ->whereIn('TrangThai', ['DA_CO_KET_QUA', 'HOAN_THANH'])
                     ->exists();
-                $luotKham->update(['TrangThai' => $hasCompleted ? 'CHO_KHAM_LAI' : 'DANG_KHAM']);
+                // Nếu tất cả dịch vụ đều bị hủy (không có dịch vụ nào hoàn thành) -> quay về DANG_KHAM
+                // Nếu có dịch vụ đã hoàn thành -> giữ nguyên CHO_KET_QUA để chờ bệnh nhân quay lại tiếp nhận
+                if (!$hasCompleted) {
+                    $luotKham->update(['TrangThai' => 'DANG_KHAM']);
+                }
             }
         }
 

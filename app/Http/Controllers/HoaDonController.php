@@ -31,19 +31,36 @@ class HoaDonController extends Controller
             return response()->json(['success' => false, 'message' => 'Bạn không có quyền truy cập quản lý hóa đơn thu ngân.'], 403);
         }
 
-        $query = HoaDon::query()->with([
+        $perPage = (int) $request->input('per_page', 10);
+        if (!in_array($perPage, [10, 20, 50], true)) {
+            $perPage = 10;
+        }
+
+        $unbilledPerPage = (int) $request->input('unbilled_per_page', 10);
+        if (!in_array($unbilledPerPage, [10, 20, 50], true)) {
+            $unbilledPerPage = 10;
+        }
+
+        $page = max(1, (int) $request->input('page', 1));
+        $unbilledPage = max(1, (int) $request->input('unbilled_page', 1));
+
+        $invoiceQuery = HoaDon::query()->with([
             'luotKham.benhNhan:MaBenhNhan,HoTen,SoDienThoai,GioiTinh,NgaySinh,DiaChi',
             'luotKham.bacSi:MaBacSi,HoTen',
             'chiTietHoaDons',
             'thanhToans',
         ]);
 
-        // Tìm kiếm theo tên bệnh nhân, SĐT, hoặc mã hóa đơn
-        if ($search = $request->input('search')) {
-            $query->where(function ($q) use ($search) {
+        if ($search = trim((string) $request->input('search', ''))) {
+            $invoiceQuery->where(function ($q) use ($search) {
                 if (is_numeric($search)) {
-                    $q->where('MaHoaDon', (int)$search);
+                    $q->where('MaHoaDon', (int) $search)
+                        ->orWhere('MaLuotKham', (int) $search)
+                        ->orWhereHas('luotKham.benhNhan', function ($sub) use ($search) {
+                            $sub->where('MaBenhNhan', (int) $search);
+                        });
                 }
+
                 $q->orWhereHas('luotKham.benhNhan', function ($sub) use ($search) {
                     $sub->where('HoTen', 'like', "%{$search}%")
                         ->orWhere('SoDienThoai', 'like', "%{$search}%");
@@ -51,52 +68,60 @@ class HoaDonController extends Controller
             });
         }
 
-        // Lọc theo ngày lập
         if ($date = $request->input('date')) {
-            $query->whereDate('NgayTao', $date);
+            $invoiceQuery->whereDate('NgayTao', $date);
         }
 
-        // Lọc theo trạng thái
         if ($status = $request->input('status')) {
-            $query->where('TrangThai', $status);
+            $invoiceQuery->where('TrangThai', $status);
         }
 
-        $invoices = $query->orderBy('NgayTao', 'desc')->get();
+        $invoices = $invoiceQuery->orderBy('NgayTao', 'desc')->paginate($perPage, ['*'], 'page', $page)->withQueryString();
 
-        // Nếu request dạng JSON API
         if ($request->expectsJson() || $request->is('api/*')) {
             return response()->json([
                 'success' => true,
-                'data' => $invoices,
-                'total' => $invoices->count(),
+                'data' => $invoices->items(),
+                'total' => $invoices->total(),
+                'current_page' => $invoices->currentPage(),
+                'last_page' => $invoices->lastPage(),
+                'per_page' => $invoices->perPage(),
             ]);
         }
 
-        // Thống kê nhanh trong ngày
         $today = now()->toDateString();
         $todayPayments = ThanhToan::whereDate('ThoiGianThanhToan', $today)
             ->where('TrangThai', 'DA_THANH_TOAN')
             ->sum('SoTien');
 
         $stats = [
-            'todayRevenue' => (float)$todayPayments,
+            'todayRevenue' => (float) $todayPayments,
             'todayInvoices' => HoaDon::whereDate('NgayTao', $today)->count(),
             'unpaidCount' => HoaDon::whereIn('TrangThai', ['CHUA_THANH_TOAN', 'THANH_TOAN_MOT_PHAN'])->count(),
             'paidCount' => HoaDon::where('TrangThai', 'DA_THANH_TOAN')->count(),
         ];
 
-        // Danh sách các lượt khám chưa có hóa đơn (đang khám hoặc đã xong) để tiện lập hóa đơn mới
-        $unbilledVisits = LuotKham::whereDoesntHave('hoaDon')
+        $unbilledQuery = LuotKham::query()->whereDoesntHave('hoaDon')
             ->whereIn('TrangThai', ['HOAN_THANH', 'DANG_KHAM'])
             ->with([
-                'benhNhan:MaBenhNhan,HoTen,SoDienThoai,GioiTinh',
+                'benhNhan:MaBenhNhan,HoTen,SoDienThoai,GioiTinh,SoTheBHYT,MucHuongBHYT',
                 'bacSi:MaBacSi,HoTen',
-                'donThuoc.chiTietDonThuocs.thuoc',
-                'chiDinhDichVus.dichVu',
-            ])
-            ->orderBy('ThoiGianTiepNhan', 'desc')
-            ->take(15)
-            ->get();
+                'donThuoc.chiTietDonThuocs.thuoc:MaThuoc,TenThuoc,DonGia,DonViTinh,ApDungBHYT',
+                'chiDinhDichVus.dichVu:MaDichVu,TenDichVu,DonGia,ApDungBHYT',
+            ]);
+
+        if ($unbilledSearch = trim((string) $request->input('unbilled_search', ''))) {
+            $unbilledQuery->where(function ($q) use ($unbilledSearch) {
+                $q->where('MaLuotKham', (int) $unbilledSearch)
+                    ->orWhereHas('benhNhan', function ($sub) use ($unbilledSearch) {
+                        $sub->where('MaBenhNhan', (int) $unbilledSearch)
+                            ->orWhere('HoTen', 'like', "%{$unbilledSearch}%")
+                            ->orWhere('SoDienThoai', 'like', "%{$unbilledSearch}%");
+                    });
+            });
+        }
+
+        $unbilledVisits = $unbilledQuery->orderBy('ThoiGianTiepNhan', 'desc')->paginate($unbilledPerPage, ['*'], 'unbilled_page', $unbilledPage)->withQueryString();
 
         return Inertia::render('Receptionist/Payment', [
             'invoices' => $invoices,
@@ -106,6 +131,11 @@ class HoaDonController extends Controller
                 'search' => $request->input('search', ''),
                 'date' => $request->input('date', ''),
                 'status' => $request->input('status', ''),
+                'per_page' => $perPage,
+                'page' => $page,
+                'unbilled_search' => $request->input('unbilled_search', ''),
+                'unbilled_per_page' => $unbilledPerPage,
+                'unbilled_page' => $unbilledPage,
             ],
         ]);
     }
@@ -170,6 +200,7 @@ class HoaDonController extends Controller
         ]);
 
         return DB::transaction(function () use ($validated, $request) {
+            $user = $request->user();
             $maLuotKham = $validated['MaLuotKham'];
 
             // Khóa dòng lượt khám để chống race condition
@@ -197,6 +228,10 @@ class HoaDonController extends Controller
             $seenMedDetails = [];
             $seenServiceIds = [];
 
+            $mucHuongBHYT = ($luotKham->CoBHYT || (!empty($luotKham->SoTheBHYT) && (int)($luotKham->MucHuongBHYT ?? 0) > 0)) 
+                ? (int)($luotKham->MucHuongBHYT ?? 80) 
+                : 0;
+
             // 1. Phí khám bệnh (nếu có truyền hoặc mặc định)
             $tienKham = (float)($validated['TienKham'] ?? 0);
             if ($tienKham > 0) {
@@ -205,6 +240,7 @@ class HoaDonController extends Controller
                     'NoiDung' => 'Phí khám lâm sàng ban đầu',
                     'SoLuong' => 1,
                     'DonGia' => $tienKham,
+                    'DuocBHYTChiTra' => ($mucHuongBHYT > 0),
                     'MaChiDinh' => null,
                     'MaChiTietDonThuoc' => null,
                 ];
@@ -218,22 +254,21 @@ class HoaDonController extends Controller
 
             foreach ($activeDonThuocs as $donThuoc) {
                 foreach ($donThuoc->chiTietDonThuocs as $ct) {
-                    // Chống trùng lặp một chi tiết đơn thuốc
                     if (in_array($ct->MaChiTietDonThuoc, $seenMedDetails)) {
                         continue;
                     }
                     $seenMedDetails[] = $ct->MaChiTietDonThuoc;
 
                     $thuoc = $ct->thuoc ?? Thuoc::find($ct->MaThuoc);
-                    // Nguyên tắc y tế: Ưu tiên đơn giá đã chốt tại thời điểm bác sĩ kê đơn ($ct->DonGia).
-                    // Nếu giá danh mục thuốc thay đổi sau đó, đơn giá trên đơn thuốc vẫn được bảo toàn.
                     $donGiaThuoc = ((float)$ct->DonGia > 0) ? (float)$ct->DonGia : ($thuoc ? (float)$thuoc->DonGia : 0);
+                    $duocBHYT = ($thuoc ? (bool)$thuoc->ApDungBHYT : true) && ($mucHuongBHYT > 0);
 
                     $items[] = [
                         'LoaiChiPhi' => 'THUOC',
                         'NoiDung' => $thuoc ? $thuoc->TenThuoc : 'Thuốc điều trị',
                         'SoLuong' => (int)$ct->SoLuong,
                         'DonGia' => $donGiaThuoc,
+                        'DuocBHYTChiTra' => $duocBHYT,
                         'MaChiDinh' => null,
                         'MaChiTietDonThuoc' => $ct->MaChiTietDonThuoc,
                     ];
@@ -247,48 +282,55 @@ class HoaDonController extends Controller
                 ->get();
 
             foreach ($activeChiDinhs as $cd) {
-                // Chống trùng lặp một chỉ định dịch vụ
                 if (in_array($cd->MaChiDinh, $seenServiceIds)) {
                     continue;
                 }
                 $seenServiceIds[] = $cd->MaChiDinh;
 
                 $dichVu = $cd->dichVu ?? DichVu::find($cd->MaDichVu);
-                // Nguyên tắc y tế: Ưu tiên đơn giá đã chốt tại thời điểm bác sĩ chỉ định ($cd->DonGia).
-                // Nếu bảng giá dịch vụ thay đổi sau đó, đơn giá đã chỉ định cho bệnh nhân vẫn được bảo toàn.
                 $donGiaDV = ((float)$cd->DonGia > 0) ? (float)$cd->DonGia : ($dichVu ? (float)$dichVu->DonGia : 0);
+                $duocBHYT = ($dichVu ? (bool)$dichVu->ApDungBHYT : true) && ($mucHuongBHYT > 0);
 
                 $items[] = [
                     'LoaiChiPhi' => 'DICH_VU',
                     'NoiDung' => $dichVu ? $dichVu->TenDichVu : 'Dịch vụ kỹ thuật',
                     'SoLuong' => 1,
                     'DonGia' => $donGiaDV,
+                    'DuocBHYTChiTra' => $duocBHYT,
                     'MaChiDinh' => $cd->MaChiDinh,
                     'MaChiTietDonThuoc' => null,
                 ];
             }
 
-            // Nếu không có bất kỳ mục chi phí nào, mặc định phí khám cơ bản tối thiểu 100.000đ
-            if (empty($items)) {
-                $items[] = [
-                    'LoaiChiPhi' => 'KHAM',
-                    'NoiDung' => 'Phí khám bệnh chuyên khoa',
-                    'SoLuong' => 1,
-                    'DonGia' => 100000.00,
-                    'MaChiDinh' => null,
-                    'MaChiTietDonThuoc' => null,
-                ];
-            }
-
-            // Tính tổng tiền dựa trên chi tiết lấy từ DB
+            // Tính toán số tiền tự động: Tổng chi phí và phần BHYT chi trả
             $tongTien = 0;
-            foreach ($items as $item) {
-                $tongTien += ($item['SoLuong'] * $item['DonGia']);
-            }
-            $tongTien = round($tongTien, 2);
+            $autoBaoHiemChiTra = 0;
 
+            foreach ($items as &$item) {
+                $lineTotal = round($item['SoLuong'] * $item['DonGia'], 2);
+                $tongTien += $lineTotal;
+
+                if ($item['DuocBHYTChiTra'] && $mucHuongBHYT > 0) {
+                    $lineBHYT = round($lineTotal * ($mucHuongBHYT / 100), 2);
+                    $lineBN = round($lineTotal - $lineBHYT, 2);
+                } else {
+                    $lineBHYT = 0;
+                    $lineBN = $lineTotal;
+                }
+
+                $item['TienBHYTChiTra'] = $lineBHYT;
+                $item['TienBenhNhanChiTra'] = $lineBN;
+                $autoBaoHiemChiTra += $lineBHYT;
+            }
+            unset($item);
+
+            $tongTien = round($tongTien, 2);
             $giamGia = round((float)($validated['GiamGia'] ?? 0), 2);
-            $baoHiem = round((float)($validated['BaoHiemChiTra'] ?? 0), 2);
+
+            // Nếu người dùng có nhập tay số tiền BHYT thì ưu tiên giá trị nhập, ngược lại dùng số tiền tự động tính
+            $baoHiem = array_key_exists('BaoHiemChiTra', $validated) && $validated['BaoHiemChiTra'] !== null
+                ? round((float)$validated['BaoHiemChiTra'], 2)
+                : round($autoBaoHiemChiTra, 2);
 
             if (($giamGia + $baoHiem) > $tongTien) {
                 throw ValidationException::withMessages([
@@ -301,19 +343,20 @@ class HoaDonController extends Controller
             $benhNhanChiTra = round($tongTien - $giamGia - $baoHiem, 2);
             $trangThai = ($benhNhanChiTra == 0) ? 'DA_THANH_TOAN' : 'CHUA_THANH_TOAN';
 
-            // Tạo Hóa Đơn
+            // Tạo Hóa Đơn với giá trị 0 trước để tránh xung đột trigger MySQL sp_cap_nhat_tong_hoa_don khi chèn từng dòng
             $hoaDon = HoaDon::create([
                 'MaLuotKham' => $luotKham->MaLuotKham,
-                'TongTien' => $tongTien,
-                'GiamGia' => $giamGia,
-                'BaoHiemChiTra' => $baoHiem,
-                'BenhNhanChiTra' => $benhNhanChiTra,
+                'TongTien' => 0,
+                'GiamGia' => 0,
+                'BaoHiemChiTra' => 0,
+                'BenhNhanChiTra' => 0,
                 'TrangThai' => $trangThai,
+                'MaTaiKhoanThu' => $user?->MaTaiKhoan,
                 'NgayTao' => now(),
                 'GhiChu' => $validated['GhiChu'] ?? null,
             ]);
 
-            // Tạo từng Chi Tiết Hóa Đơn (ThanhTien là STORED GENERATED, không truyền vào)
+            // Tạo từng Chi Tiết Hóa Đơn
             foreach ($items as $item) {
                 ChiTietHoaDon::create([
                     'MaHoaDon' => $hoaDon->MaHoaDon,
@@ -321,10 +364,22 @@ class HoaDonController extends Controller
                     'NoiDung' => $item['NoiDung'],
                     'SoLuong' => $item['SoLuong'],
                     'DonGia' => $item['DonGia'],
+                    'DuocBHYTChiTra' => $item['DuocBHYTChiTra'],
+                    'TienBHYTChiTra' => $item['TienBHYTChiTra'],
+                    'TienBenhNhanChiTra' => $item['TienBenhNhanChiTra'],
                     'MaChiDinh' => $item['MaChiDinh'],
                     'MaChiTietDonThuoc' => $item['MaChiTietDonThuoc'],
                 ]);
             }
+
+            // Cập nhật giá trị chốt sau khi toàn bộ chi tiết đã được ghi nhận đầy đủ
+            DB::table('hoa_don')->where('MaHoaDon', $hoaDon->MaHoaDon)->update([
+                'TongTien' => $tongTien,
+                'GiamGia' => $giamGia,
+                'BaoHiemChiTra' => $baoHiem,
+                'BenhNhanChiTra' => $benhNhanChiTra,
+            ]);
+            $hoaDon->refresh();
 
             $loadedInvoice = $hoaDon->load([
                 'luotKham.benhNhan',
@@ -381,6 +436,7 @@ class HoaDonController extends Controller
         ]);
 
         return DB::transaction(function () use ($id, $validated, $request) {
+            $user = $request->user();
             $hoaDon = HoaDon::with('thanhToans')->lockForUpdate()->find($id);
 
             if (!$hoaDon) {
@@ -468,17 +524,20 @@ class HoaDonController extends Controller
                 'ThoiGianThanhToan' => now(),
                 'TrangThai' => 'DA_THANH_TOAN',
                 'MaGiaoDich' => $maGiaoDich,
+                'MaTaiKhoanThu' => $user?->MaTaiKhoan,
                 'GhiChu' => $validated['GhiChu'] ?? 'Thu tiền thanh toán viện phí',
                 'NgayTao' => now(),
             ]);
 
-            // Cập nhật trạng thái Hóa Đơn
+            // Cập nhật trạng thái Hóa Đơn và ghi nhận người thu
             $tongDaTraMoi = round($daThanhToan + $soTienThanhToan, 2);
+            $hoaDonUpdateData = ['MaTaiKhoanThu' => $user?->MaTaiKhoan];
             if ($tongDaTraMoi >= (float)$hoaDon->BenhNhanChiTra) {
-                $hoaDon->update(['TrangThai' => 'DA_THANH_TOAN']);
+                $hoaDonUpdateData['TrangThai'] = 'DA_THANH_TOAN';
             } else {
-                $hoaDon->update(['TrangThai' => 'THANH_TOAN_MOT_PHAN']);
+                $hoaDonUpdateData['TrangThai'] = 'THANH_TOAN_MOT_PHAN';
             }
+            $hoaDon->update($hoaDonUpdateData);
 
             // Kích hoạt thông báo cho Bệnh nhân
             $maBenhNhan = $hoaDon->luotKham?->MaBenhNhan;

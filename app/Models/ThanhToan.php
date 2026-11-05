@@ -22,7 +22,14 @@ class ThanhToan extends Model
         'MaGiaoDich',
         'GhiChu',
         'NgayTao',
+        'MaTaiKhoanThu',
     ];
+
+    // Quan hệ: ThanhToan do một Lễ tân/Thu ngân (TaiKhoan) xác nhận
+    public function nguoiThu()
+    {
+        return $this->belongsTo(TaiKhoan::class, 'MaTaiKhoanThu', 'MaTaiKhoan');
+    }
 
     // Quan hệ: ThanhToan thuộc về một HoaDon
     public function hoaDon()

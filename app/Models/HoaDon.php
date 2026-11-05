@@ -22,7 +22,14 @@ class HoaDon extends Model
         'TrangThai',
         'NgayTao',
         'GhiChu',
+        'MaTaiKhoanThu',
     ];
+
+    // Quan hệ: HoaDon do một Lễ tân/Thu ngân (TaiKhoan) thu tiền
+    public function nguoiThu()
+    {
+        return $this->belongsTo(TaiKhoan::class, 'MaTaiKhoanThu', 'MaTaiKhoan');
+    }
 
     protected $appends = ['DaThanhToan', 'ConLai'];
 

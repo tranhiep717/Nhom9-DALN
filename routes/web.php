@@ -18,6 +18,7 @@ use App\Http\Controllers\HoaDonController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AiChatController;
 use App\Http\Controllers\CanLamSangController;
+use App\Http\Controllers\ChamCongController;
 use App\Http\Controllers\ThongBaoController;
 
 // Public routes
@@ -55,10 +56,11 @@ Route::middleware('auth')->group(function () {
     Route::delete('/appointments/{id}', [LichHenController::class, 'cancel'])->name('appointments.destroy');
 });
 
+// Dashboard chung (tự động điều hướng theo vai trò người dùng)
+Route::middleware('auth')->get('/dashboard', [BenhNhanController::class, 'dashboard'])->name('dashboard');
+
 // Patient Routes (Bệnh nhân Portal)
 Route::middleware(['auth', 'role:BENH_NHAN'])->group(function () {
-    Route::get('/dashboard', [BenhNhanController::class, 'dashboard'])->name('dashboard');
-
     Route::prefix('patient')->name('patient.')->group(function () {
         Route::get('/dashboard', [BenhNhanController::class, 'dashboard'])->name('dashboard');
         Route::get('/profile', [BenhNhanController::class, 'profileView'])->name('profile');
@@ -72,14 +74,15 @@ Route::middleware(['auth', 'role:BENH_NHAN'])->group(function () {
         Route::get('/doctors', [BacSiController::class, 'patientIndex'])->name('doctors');
         Route::get('/specialties', [ChuyenKhoaController::class, 'patientIndex'])->name('specialties');
 
-        Route::get('/records', function () { return Inertia::render('Placeholder', ['role' => 'patient', 'title' => 'Hồ sơ sức khỏe']); })->name('records');
-        Route::get('/tests', function () { return Inertia::render('Placeholder', ['role' => 'patient', 'title' => 'Kết quả xét nghiệm']); })->name('tests');
+        Route::get('/records', function () { return redirect()->route('patient.history'); })->name('records');
+        Route::get('/tests', function () { return redirect()->route('patient.history'); })->name('tests');
     });
 });
 
 // Doctor Routes (Bác sĩ)
 Route::prefix('doctor')->name('doctor.')->middleware(['auth', 'role:BAC_SI'])->group(function () {
     Route::get('/dashboard', [BacSiController::class, 'dashboard'])->name('dashboard');
+    Route::get('/cls-patients', [BacSiController::class, 'clsPatients'])->name('cls-patients');
     
     // Khám bệnh & Lượt khám
     Route::get('/examine', [LuotKhamController::class, 'index'])->name('examine');
@@ -88,6 +91,10 @@ Route::prefix('doctor')->name('doctor.')->middleware(['auth', 'role:BAC_SI'])->g
     Route::post('/visits/{id}/start', [LuotKhamController::class, 'startExamine'])->name('visits.start');
     Route::post('/visits/{id}/phieu-kham', [LuotKhamController::class, 'savePhieuKham'])->name('visits.phieu-kham');
     Route::post('/visits/{id}/complete', [LuotKhamController::class, 'completeExamine'])->name('visits.complete');
+    Route::post('/queue/call-next', [LuotKhamController::class, 'callNextPatient'])->name('queue.call-next');
+    Route::post('/queue/call-speaker', [LuotKhamController::class, 'recordPatientCall'])->name('queue.call-speaker');
+    Route::post('/queue/skip-patient', [LuotKhamController::class, 'skipPatient'])->name('queue.skip-patient');
+    Route::post('/queue/cls-return', [LuotKhamController::class, 'recordClsReturn'])->name('queue.cls-return');
 
     // Kê đơn thuốc
     Route::get('/medicines', [ThuocController::class, 'index'])->name('medicines.index');
@@ -110,6 +117,16 @@ Route::prefix('doctor')->name('doctor.')->middleware(['auth', 'role:BAC_SI'])->g
     Route::put('/schedules/{id}', [LichLamViecController::class, 'update'])->name('schedules.update');
     Route::delete('/schedules/{id}', [LichLamViecController::class, 'destroy'])->name('schedules.destroy');
 
+    // Chấm công & Lương
+    Route::get('/attendance', [ChamCongController::class, 'index'])->name('attendance.index');
+    Route::get('/payroll', [ChamCongController::class, 'doctorPayrollPage'])->name('payroll.index');
+    Route::post('/attendance/check-in', [ChamCongController::class, 'checkIn'])->name('attendance.check-in');
+    Route::post('/attendance/check-out', [ChamCongController::class, 'checkOut'])->name('attendance.check-out');
+    Route::get('/payroll-data', [ChamCongController::class, 'payroll'])->name('payroll.data');
+    Route::post('/payroll/build-month', [ChamCongController::class, 'buildMonthlyPayroll'])->name('payroll.build-month');
+    Route::post('/requests', [ChamCongController::class, 'storeRequest'])->name('requests.store');
+    Route::post('/requests/{id}/peer-confirm', [ChamCongController::class, 'peerConfirmRequest'])->name('requests.peer-confirm');
+
     // Quản lý Ca khám
     Route::post('/ca-kham', [CaKhamController::class, 'store'])->name('ca-kham.store');
     Route::put('/ca-kham/{id}', [CaKhamController::class, 'update'])->name('ca-kham.update');
@@ -117,15 +134,16 @@ Route::prefix('doctor')->name('doctor.')->middleware(['auth', 'role:BAC_SI'])->g
     // Xem Lịch hẹn khám của bác sĩ
     Route::get('/appointments', [LichHenController::class, 'index'])->name('appointments');
 
-    Route::get('/patients', function () { return Inertia::render('Placeholder', ['role' => 'doctor', 'title' => 'Bệnh nhân của tôi']); })->name('patients');
-    Route::get('/stats', function () { return Inertia::render('Placeholder', ['role' => 'doctor', 'title' => 'Thống kê']); })->name('stats');
+    Route::get('/patients', function () { return redirect()->route('doctor.examine'); })->name('patients');
+    Route::get('/stats', function () { return redirect()->route('doctor.dashboard'); })->name('stats');
 });
 
 // Receptionist Routes (Lễ tân)
 Route::prefix('receptionist')->name('receptionist.')->middleware(['auth', 'role:LE_TAN,QUAN_TRI_VIEN'])->group(function () {
     Route::get('/dashboard', [LichHenController::class, 'receptionistDashboard'])->name('dashboard');
     Route::get('/queue', [LichHenController::class, 'queue'])->name('queue');
-    Route::get('/records', function () { return Inertia::render('Placeholder', ['role' => 'receptionist', 'title' => 'Hồ sơ bệnh nhân']); })->name('records');
+    Route::get('/records', [BenhNhanController::class, 'receptionistIndex'])->name('records');
+    Route::get('/records/{id}', [BenhNhanController::class, 'receptionistShow'])->name('records.show');
 
     // Quản lý Hóa đơn & Thu ngân
     Route::get('/payment', [HoaDonController::class, 'index'])->name('payment');
@@ -136,8 +154,13 @@ Route::prefix('receptionist')->name('receptionist.')->middleware(['auth', 'role:
     Route::post('/invoices/{id}/cancel', [HoaDonController::class, 'cancel'])->name('invoices.cancel');
 
     // Quản lý Tiếp nhận bệnh nhân & Lượt khám
+    Route::get('/patients/search', [BenhNhanController::class, 'search'])->name('patients.search');
+    Route::post('/patients', [BenhNhanController::class, 'store'])->name('patients.store');
     Route::get('/visits', [LuotKhamController::class, 'index'])->name('visits.index');
     Route::post('/visits', [LuotKhamController::class, 'store'])->name('visits.store');
+    Route::post('/queue/cls-return', [LuotKhamController::class, 'recordClsReturn'])->name('queue.cls-return');
+    Route::post('/queue/call-speaker', [LuotKhamController::class, 'recordPatientCall'])->name('queue.call-speaker');
+    Route::post('/queue/skip-patient', [LuotKhamController::class, 'skipPatient'])->name('queue.skip-patient');
 
     // Quản lý Lịch hẹn & Tiếp nhận
     Route::get('/appointments', [LichHenController::class, 'index'])->name('appointments');
@@ -145,16 +168,37 @@ Route::prefix('receptionist')->name('receptionist.')->middleware(['auth', 'role:
     Route::post('/appointments/{id}/status', [LichHenController::class, 'updateStatus'])->name('appointments.status');
     Route::put('/appointments/{id}/status', [LichHenController::class, 'updateStatus'])->name('appointments.status.put');
     Route::post('/appointments/{id}/cancel', [LichHenController::class, 'cancel'])->name('appointments.cancel');
+
+    // Lịch trực & Chấm công Lễ tân
+    Route::get('/schedule', [ChamCongController::class, 'receptionistSchedulePage'])->name('schedule');
+    Route::get('/attendance', [ChamCongController::class, 'staffAttendancePage'])->name('attendance');
+    Route::get('/payroll', [ChamCongController::class, 'staffAttendancePage'])->name('payroll');
+    Route::post('/attendance/check-in', [ChamCongController::class, 'checkIn'])->name('attendance.check-in');
+    Route::post('/attendance/check-out', [ChamCongController::class, 'checkOut'])->name('attendance.check-out');
+    Route::post('/requests', [ChamCongController::class, 'storeRequest'])->name('requests.store');
+    Route::post('/requests/{id}/peer-confirm', [ChamCongController::class, 'peerConfirmRequest'])->name('requests.peer-confirm');
 });
 
 // Cận lâm sàng Routes (Kỹ thuật viên xét nghiệm & Chẩn đoán hình ảnh)
 Route::prefix('cls')->name('cls.')->middleware(['auth', 'role:NHAN_VIEN_CAN_LAM_SANG,QUAN_TRI_VIEN'])->group(function () {
     Route::get('/dashboard', [CanLamSangController::class, 'dashboard'])->name('dashboard');
+    Route::get('/schedule', [CanLamSangController::class, 'schedule'])->name('schedule');
     Route::get('/requests', [CanLamSangController::class, 'dashboard'])->name('requests');
+    Route::get('/pending', [CanLamSangController::class, 'pending'])->name('pending');
+    Route::get('/processing', [CanLamSangController::class, 'processing'])->name('processing');
+    Route::get('/results', [CanLamSangController::class, 'results'])->name('results');
     Route::post('/requests/{id}/receive', [CanLamSangController::class, 'receive'])->name('requests.receive');
     Route::post('/requests/{id}/start', [CanLamSangController::class, 'start'])->name('requests.start');
     Route::post('/requests/{id}/result', [CanLamSangController::class, 'updateResult'])->name('requests.result');
     Route::post('/requests/{id}/cancel', [CanLamSangController::class, 'cancel'])->name('requests.cancel');
+
+    // Chấm công & Bảng lương Cận lâm sàng
+    Route::get('/attendance', [ChamCongController::class, 'staffAttendancePage'])->name('attendance');
+    Route::get('/payroll', [ChamCongController::class, 'staffAttendancePage'])->name('payroll');
+    Route::post('/attendance/check-in', [ChamCongController::class, 'checkIn'])->name('attendance.check-in');
+    Route::post('/attendance/check-out', [ChamCongController::class, 'checkOut'])->name('attendance.check-out');
+    Route::post('/requests', [ChamCongController::class, 'storeRequest'])->name('requests.store');
+    Route::post('/requests/{id}/peer-confirm', [ChamCongController::class, 'peerConfirmRequest'])->name('requests.peer-confirm');
 });
 
 // Admin Routes (Quản trị viên)
@@ -200,6 +244,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:QUAN_TRI_VIEN'
     Route::post('/schedules', [LichLamViecController::class, 'store'])->name('schedules.store');
     Route::put('/schedules/{id}', [LichLamViecController::class, 'update'])->name('schedules.update');
     Route::delete('/schedules/{id}', [LichLamViecController::class, 'destroy'])->name('schedules.destroy');
+    Route::get('/attendance', [ChamCongController::class, 'index'])->name('attendance.index');
+    Route::get('/payroll', [ChamCongController::class, 'adminPayrollPage'])->name('payroll.index');
+    Route::post('/attendance/check-in', [ChamCongController::class, 'checkIn'])->name('attendance.check-in');
+    Route::post('/attendance/check-out', [ChamCongController::class, 'checkOut'])->name('attendance.check-out');
+    Route::get('/payroll-data', [ChamCongController::class, 'payroll'])->name('payroll.data');
+    Route::post('/payroll/build-month', [ChamCongController::class, 'buildMonthlyPayroll'])->name('payroll.build-month');
+    Route::post('/requests/{id}/approve', [ChamCongController::class, 'approveRequest'])->name('requests.approve');
+    Route::post('/requests/{id}/reject', [ChamCongController::class, 'rejectRequest'])->name('requests.reject');
     Route::post('/ca-kham', [CaKhamController::class, 'store'])->name('ca-kham.store');
     Route::put('/ca-kham/{id}', [CaKhamController::class, 'update'])->name('ca-kham.update');
 
@@ -212,7 +264,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:QUAN_TRI_VIEN'
     Route::get('/invoices', [AdminController::class, 'invoicesIndex'])->name('invoices');
     Route::get('/reports', [AdminController::class, 'reportsIndex'])->name('reports');
 
-    Route::get('/settings', function () { return Inertia::render('Placeholder', ['role' => 'admin', 'title' => 'Cấu hình hệ thống']); })->name('settings');
+    // Giám sát Cận lâm sàng toàn viện
+    Route::get('/cls-monitor', [AdminController::class, 'clsMonitorIndex'])->name('cls-monitor');
+
+    // Báo cáo & Giám sát Tiếp đón - Hàng chờ Toàn viện
+    Route::get('/reception-analytics', [AdminController::class, 'receptionAnalytics'])->name('reception-analytics');
+    Route::get('/reception', function() { return redirect()->route('admin.reception-analytics'); })->name('reception');
+    Route::get('/queue', function() { return redirect()->route('admin.reception-analytics'); })->name('queue');
+
+    Route::get('/settings', function () { return redirect()->route('admin.dashboard'); })->name('settings');
 });
 
 Route::middleware('auth')->group(function () {
@@ -230,6 +290,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/prescriptions', [DonThuocController::class, 'index'])->name('prescriptions.index');
     Route::get('/prescriptions/{id}', [DonThuocController::class, 'show'])->name('prescriptions.show');
     Route::get('/service-requests/{id}', [ChiDinhDichVuController::class, 'show'])->name('service-requests.show');
+
+    // Chấm công & Phê duyệt đơn chéo đồng nghiệp
+    Route::post('/staff/requests/{id}/peer-confirm', [ChamCongController::class, 'peerConfirmRequest'])->name('staff.requests.peer-confirm');
 
     // AI Chatbot Trợ lý y tế thông minh (SmartCare AI Assistant)
     Route::get('/ai/conversations', [AiChatController::class, 'conversations'])->name('ai.conversations');

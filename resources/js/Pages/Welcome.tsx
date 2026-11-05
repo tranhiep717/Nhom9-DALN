@@ -1,9 +1,21 @@
+import { useState } from 'react';
 import { PageProps } from '@/types';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import PublicLayout from '@/Layouts/PublicLayout';
 import { Search, Calendar, FileText, Activity, HeartPulse, Stethoscope, Baby, Smile, Phone, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 export default function Welcome({ auth }: PageProps<{}>) {
+    const [searchQuery, setSearchQuery] = useState('');
+
+    const handleSearch = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (searchQuery.trim()) {
+            router.visit(`/doctors?search=${encodeURIComponent(searchQuery.trim())}`);
+        } else {
+            router.visit('/doctors');
+        }
+    };
+
     return (
         <PublicLayout>
             <Head title="Phòng khám thông minh SmartCare" />
@@ -29,10 +41,13 @@ export default function Welcome({ auth }: PageProps<{}>) {
                                     <Calendar className="w-5 h-5 mr-2" />
                                     Đặt lịch khám
                                 </Link>
-                                <button className="inline-flex items-center justify-center px-6 py-3.5 border-2 border-primary text-base font-medium rounded-xl text-primary bg-white hover:bg-primary-light/50 transition-all">
+                                <Link 
+                                    href="/doctors" 
+                                    className="inline-flex items-center justify-center px-6 py-3.5 border-2 border-primary text-base font-medium rounded-xl text-primary bg-white hover:bg-primary-light/50 transition-all"
+                                >
                                     <Search className="w-5 h-5 mr-2" />
                                     Tìm bác sĩ
-                                </button>
+                                </Link>
                             </div>
                         </div>
                         <div className="hidden lg:flex justify-center relative">
@@ -57,19 +72,21 @@ export default function Welcome({ auth }: PageProps<{}>) {
 
             {/* C. Thanh tìm kiếm */}
             <section className="relative z-10 -mt-8 max-w-[1000px] mx-auto px-4">
-                <div className="bg-white rounded-2xl shadow-lg p-2 sm:p-3 flex flex-col sm:flex-row gap-2 border border-gray-100">
+                <form onSubmit={handleSearch} className="bg-white rounded-2xl shadow-lg p-2 sm:p-3 flex flex-col sm:flex-row gap-2 border border-gray-100">
                     <div className="flex-1 flex items-center px-4 bg-gray-50 rounded-xl border border-transparent focus-within:border-primary focus-within:bg-white transition-all">
                         <Search className="w-5 h-5 text-gray-400" />
                         <input 
                             type="text" 
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder="Tìm bác sĩ, chuyên khoa, dịch vụ..."
                             className="w-full bg-transparent border-none focus:ring-0 text-gray-700 py-3"
                         />
                     </div>
-                    <button className="bg-primary hover:bg-primary-hover text-white px-8 py-3 rounded-xl font-medium transition-colors">
+                    <button type="submit" className="bg-primary hover:bg-primary-hover text-white px-8 py-3 rounded-xl font-medium transition-colors">
                         Tìm kiếm
                     </button>
-                </div>
+                </form>
             </section>
 
             {/* D. Ba thẻ truy cập nhanh */}
@@ -94,7 +111,7 @@ export default function Welcome({ auth }: PageProps<{}>) {
                                 <p className="text-sm text-gray-500">Xem và quản lý lịch</p>
                             </div>
                         </Link>
-                        <Link href="/records" className="group bg-white rounded-2xl p-6 shadow-sm hover:shadow-md transition-all border border-gray-100 flex items-center gap-4 hover:-translate-y-1">
+                        <Link href="/patient/history" className="group bg-white rounded-2xl p-6 shadow-sm hover:shadow-md transition-all border border-gray-100 flex items-center gap-4 hover:-translate-y-1">
                             <div className="w-14 h-14 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform">
                                 <FileText className="w-7 h-7" />
                             </div>
@@ -115,9 +132,9 @@ export default function Welcome({ auth }: PageProps<{}>) {
                             <h2 className="text-2xl sm:text-3xl font-bold text-darkblue mb-2">Chuyên khoa nổi bật</h2>
                             <p className="text-gray-600">Đội ngũ chuyên gia hàng đầu trong các lĩnh vực</p>
                         </div>
-                        <a href="#" className="hidden sm:inline-flex items-center font-medium text-primary hover:text-primary-hover">
+                        <Link href="/specialties" className="hidden sm:inline-flex items-center font-medium text-primary hover:text-primary-hover">
                             Xem tất cả <ArrowRight className="w-4 h-4 ml-1" />
-                        </a>
+                        </Link>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-6">
                         {[

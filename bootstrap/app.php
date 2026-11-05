@@ -40,5 +40,30 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->respond(function (\Symfony\Component\HttpFoundation\Response $response, \Throwable $exception, \Illuminate\Http\Request $request) {
+            if ($response->getStatusCode() === 419) {
+                // Nếu là Inertia SPA request, redirect back để Inertia tự làm mới trang với session & CSRF token mới
+                if ($request->header('X-Inertia')) {
+                    return back()->with([
+                        'error' => 'Phiên làm việc hoặc mã bảo mật đã được làm mới. Vui lòng thử lại thao tác.',
+                    ]);
+                }
+
+                // Nếu là AJAX / JSON request (như Axios, fetch, XMLHttpRequest)
+                if ($request->expectsJson() || $request->ajax() || $request->wantsJson() || $request->isJson()) {
+                    return response()->json([
+                        'message' => 'Phiên làm việc hoặc mã bảo mật (CSRF) đã hết hạn. Vui lòng tải lại trang để tiếp tục.',
+                        'status' => 419,
+                    ], 419);
+                }
+
+                // Nếu là request trình duyệt thông thường bị 419, tự động redirect back
+                // Tuyệt đối không hiển thị màn hình lỗi thô "419 | PAGE EXPIRED"
+                return back()->with([
+                    'error' => 'Phiên làm việc hoặc mã bảo mật đã được làm mới. Vui lòng thử lại thao tác.',
+                ]);
+            }
+
+            return $response;
+        });
     })->create();

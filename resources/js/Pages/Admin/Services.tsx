@@ -12,9 +12,10 @@ import {
     X,
     Loader2
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import axios from 'axios';
-import { adminNavItems } from './Dashboard';
+import { adminNavItems } from '@/constants/navigation';
+import AdminPagination from '@/Components/AdminPagination';
 
 interface ServiceItem {
     MaDichVu: number;
@@ -41,10 +42,18 @@ export default function AdminServices({ auth, services = [], filters = {} }: Ser
     const [statusFilter, setStatusFilter] = useState(filters.status || '');
 
     const [serviceList, setServiceList] = useState<ServiceItem[]>(services);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
+
     const [modalOpen, setModalOpen] = useState(false);
     const [editingService, setEditingService] = useState<ServiceItem | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+    const paginatedServices = useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return serviceList.slice(start, start + pageSize);
+    }, [serviceList, currentPage, pageSize]);
 
     const [formData, setFormData] = useState({
         TenDichVu: '',
@@ -227,7 +236,14 @@ export default function AdminServices({ auth, services = [], filters = {} }: Ser
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 text-xs">
-                                {serviceList.map((svc) => (
+                                {paginatedServices.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                            Không tìm thấy dịch vụ nào phù hợp.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    paginatedServices.map((svc) => (
                                     <tr key={svc.MaDichVu} className="hover:bg-slate-50/80 transition-colors">
                                         <td className="px-6 py-4 font-mono font-bold text-teal-700">
                                             #{svc.MaDichVu}
@@ -259,10 +275,18 @@ export default function AdminServices({ auth, services = [], filters = {} }: Ser
                                             </button>
                                         </td>
                                     </tr>
-                                ))}
+                                )))}
                             </tbody>
                         </table>
                     </div>
+
+                    <AdminPagination
+                        currentPage={currentPage}
+                        totalItems={serviceList.length}
+                        pageSize={pageSize}
+                        onPageChange={setCurrentPage}
+                        onPageSizeChange={setPageSize}
+                    />
                 </div>
             </div>
 

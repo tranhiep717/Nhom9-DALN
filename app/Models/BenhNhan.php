@@ -18,6 +18,8 @@ class BenhNhan extends Model
         'NgaySinh',
         'GioiTinh',
         'SoDienThoai',
+        'SoTheBHYT',
+        'MucHuongBHYT',
         'DiaChi',
         'EmailLienHe',
     ];

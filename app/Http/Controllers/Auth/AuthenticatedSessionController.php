@@ -33,6 +33,22 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
+        $user = $request->user();
+        if ($user) {
+            if (!$user->relationLoaded('vaiTro')) {
+                $user->load('vaiTro');
+            }
+            $role = strtoupper($user->vaiTro?->TenVaiTro ?? '');
+            $targetUrl = match ($role) {
+                'QUAN_TRI_VIEN' => route('admin.dashboard'),
+                'BAC_SI' => route('doctor.dashboard'),
+                'LE_TAN' => route('receptionist.dashboard'),
+                'NHAN_VIEN_CAN_LAM_SANG' => route('cls.dashboard'),
+                default => route('dashboard'),
+            };
+            return redirect()->intended($targetUrl);
+        }
+
         return redirect()->intended(route('dashboard', absolute: false));
     }
 

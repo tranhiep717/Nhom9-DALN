@@ -1,4 +1,6 @@
 import DashboardLayout from '@/Layouts/DashboardLayout';
+import QuickAttendanceCard from '@/Components/QuickAttendanceCard';
+import { CLS_NAV_ITEMS } from '@/constants/navigation';
 import { Head, router } from '@inertiajs/react';
 import { 
     Activity, 
@@ -100,27 +102,30 @@ interface Filters {
     status?: string | null;
     search?: string | null;
     service_id?: number | null;
+    per_page?: number | string | null;
+    page?: number | string | null;
 }
 
 interface CanLamSangProps {
     auth: any;
-    requests: ServiceRequest[];
+    requests: ServiceRequest[] | { data?: ServiceRequest[]; current_page?: number; last_page?: number; per_page?: number; total?: number; from?: number | null; to?: number | null };
     stats: Stats;
     services: Service[];
     filters: Filters;
 }
 
 export default function CanLamSangDashboard({ auth, requests = [], stats, services = [], filters }: CanLamSangProps) {
-    const navItems = [
-        { name: 'Bàn làm việc CLS', href: '/cls/dashboard', icon: LayoutDashboard },
-        { name: 'Danh sách chỉ định', href: '/cls/requests', icon: FlaskConical },
-    ];
+    const navItems = CLS_NAV_ITEMS;
+
+    const paginatedRequests = Array.isArray(requests) ? { data: requests, current_page: 1, last_page: 1, per_page: requests.length || 10, total: requests.length || 0, from: requests.length ? 1 : 0, to: requests.length || 0 } : (requests || { data: [], current_page: 1, last_page: 1, per_page: 10, total: 0, from: 0, to: 0 });
+    const requestItems = paginatedRequests.data ?? [];
 
     // Local filters
     const [filterDate, setFilterDate] = useState<string>(filters?.date || new Date().toISOString().split('T')[0]);
     const [filterStatus, setFilterStatus] = useState<string>(filters?.status || '');
     const [filterService, setFilterService] = useState<string>(filters?.service_id ? String(filters.service_id) : '');
     const [searchTerm, setSearchTerm] = useState<string>(filters?.search || '');
+    const [perPage, setPerPage] = useState<number>(Number(filters?.per_page) || paginatedRequests.per_page || 10);
 
     // Processing / Modal states
     const [processingId, setProcessingId] = useState<number | null>(null);
@@ -144,16 +149,30 @@ export default function CanLamSangDashboard({ auth, requests = [], stats, servic
             status: newFilters.status !== undefined ? newFilters.status : filterStatus,
             service_id: newFilters.service_id !== undefined ? newFilters.service_id : filterService,
             search: newFilters.search !== undefined ? newFilters.search : searchTerm,
+            per_page: newFilters.per_page !== undefined ? newFilters.per_page : perPage,
+            page: 1,
         };
 
         Object.keys(queryParams).forEach((k) => {
-            if (!queryParams[k]) delete queryParams[k];
+            if (queryParams[k] === '' || queryParams[k] === null || queryParams[k] === undefined) delete queryParams[k];
         });
 
         router.get('/cls/dashboard', queryParams, {
             preserveState: true,
             preserveScroll: true,
         });
+    };
+
+    const handlePageChange = (newPage: number) => {
+        if (newPage < 1 || newPage > (paginatedRequests.last_page ?? 1) || newPage === paginatedRequests.current_page) return;
+        router.get('/cls/dashboard', {
+            date: filterDate || undefined,
+            status: filterStatus || undefined,
+            service_id: filterService || undefined,
+            search: searchTerm || undefined,
+            per_page: perPage,
+            page: newPage,
+        }, { preserveState: true, preserveScroll: true });
     };
 
     const handleSearchSubmit = (e: React.FormEvent) => {
@@ -167,7 +186,8 @@ export default function CanLamSangDashboard({ auth, requests = [], stats, servic
         setFilterStatus('');
         setFilterService('');
         setSearchTerm('');
-        router.get('/cls/dashboard', { date: today }, { preserveState: true });
+        setPerPage(10);
+        router.get('/cls/dashboard', { date: today, per_page: 10, page: 1 }, { preserveState: true });
     };
 
     // Tiếp nhận chỉ định
@@ -283,6 +303,15 @@ export default function CanLamSangDashboard({ auth, requests = [], stats, servic
         }
     };
 
+    const scheduleSummary = {
+        todayAssigned: requestItems.length,
+        waitingReceive: requestItems.filter((item) => item.TrangThai === 'CHO_TIEP_NHAN' || item.TrangThai === 'CHO_THUC_HIEN').length,
+        inProgress: requestItems.filter((item) => item.TrangThai === 'DANG_THUC_HIEN' || item.TrangThai === 'DA_TIEP_NHAN').length,
+        completed: requestItems.filter((item) => item.TrangThai === 'DA_CO_KET_QUA' || item.TrangThai === 'HOAN_THANH').length,
+    };
+
+    const activeServices = Array.from(new Map(requestItems.map((item) => [item.MaDichVu, (item.dich_vu || item.dichVu)?.TenDichVu || 'Dịch vụ'])).entries()).slice(0, 4);
+
     return (
         <DashboardLayout
             role="cls"
@@ -293,6 +322,13 @@ export default function CanLamSangDashboard({ auth, requests = [], stats, servic
             <Head title="Cận lâm sàng & Xét nghiệm - SmartCare" />
 
             <div className="max-w-7xl mx-auto space-y-6">
+                {/* 0. Chấm công nhanh ca trực hôm nay */}
+                <QuickAttendanceCard
+                    rolePrefix="cls"
+                    todaySchedule={auth?.todaySchedule}
+                    todayAttendance={auth?.todayAttendance}
+                />
+
                 {/* 1. Flash Toast */}
                 {notification && (
                     <div className={`p-4 rounded-xl flex items-center justify-between shadow-sm transition-all ${
@@ -360,6 +396,42 @@ export default function CanLamSangDashboard({ auth, requests = [], stats, servic
                     </div>
                 </div>
 
+                {/* 3. Tóm tắt lịch trực & dịch vụ trong ngày */}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                            <div className="flex items-center gap-2 text-slate-600 text-xs font-bold uppercase">
+                                <Calendar className="w-4 h-4" />
+                                Lịch trực hôm nay
+                            </div>
+                            <div className="mt-3 text-lg font-black text-slate-900">{scheduleSummary.todayAssigned} chỉ định</div>
+                            <p className="text-xs text-slate-500 mt-1">Dữ liệu thực tế từ ngày {filterDate}</p>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-200 bg-amber-50 p-4">
+                            <div className="flex items-center gap-2 text-amber-700 text-xs font-bold uppercase">
+                                <Clock className="w-4 h-4" />
+                                Ca đang xử lý
+                            </div>
+                            <div className="mt-3 text-lg font-black text-amber-700">{scheduleSummary.waitingReceive} chờ tiếp nhận</div>
+                            <p className="text-xs text-amber-600 mt-1">{scheduleSummary.inProgress} đang thực hiện</p>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-200 bg-emerald-50 p-4">
+                            <div className="flex items-center gap-2 text-emerald-700 text-xs font-bold uppercase">
+                                <CheckCircle2 className="w-4 h-4" />
+                                Dịch vụ phân công
+                            </div>
+                            <div className="mt-3 text-lg font-black text-emerald-700">{activeServices.length} loại</div>
+                            <div className="mt-2 flex flex-wrap gap-1">
+                                {activeServices.map(([id, serviceName]) => (
+                                    <span key={id} className="text-[10px] px-2 py-1 rounded-full bg-white text-slate-700 border border-slate-200">{serviceName}</span>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 {/* 3. Bộ lọc & tìm kiếm */}
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -419,7 +491,7 @@ export default function CanLamSangDashboard({ auth, requests = [], stats, servic
                             <form onSubmit={handleSearchSubmit} className="relative">
                                 <input
                                     type="text"
-                                    placeholder="Tên hoặc SĐT..."
+                                    placeholder="Mã BN, tên, SĐT, mã lượt, số phiếu..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     className="w-full text-sm rounded-xl border-slate-300 pr-9 focus:ring-primary focus:border-primary"
@@ -431,15 +503,30 @@ export default function CanLamSangDashboard({ auth, requests = [], stats, servic
                         </div>
                     </div>
 
-                    <div className="flex justify-between items-center pt-2 border-t border-slate-100 text-xs text-slate-500">
-                        <span>Đang hiển thị <strong className="text-slate-800">{requests.length}</strong> chỉ định cận lâm sàng</span>
-                        <button 
-                            type="button" 
-                            onClick={resetFilters}
-                            className="inline-flex items-center gap-1 text-primary hover:underline font-semibold"
-                        >
-                            <RefreshCw className="w-3.5 h-3.5" /> Đặt lại bộ lọc
-                        </button>
+                    <div className="flex flex-col sm:flex-row justify-between items-center pt-2 border-t border-slate-100 text-xs text-slate-500 gap-2">
+                        <span>Đang hiển thị <strong className="text-slate-800">{paginatedRequests.total ?? requestItems.length}</strong> chỉ định cận lâm sàng</span>
+                        <div className="flex items-center gap-3">
+                            <select
+                                value={perPage}
+                                onChange={(e) => {
+                                    const nextPerPage = Number(e.target.value);
+                                    setPerPage(nextPerPage);
+                                    applyFilters({ per_page: nextPerPage, page: 1 });
+                                }}
+                                className="rounded-lg border-slate-300 text-xs px-2 py-1.5"
+                            >
+                                <option value={10}>10 / trang</option>
+                                <option value={20}>20 / trang</option>
+                                <option value={50}>50 / trang</option>
+                            </select>
+                            <button 
+                                type="button" 
+                                onClick={resetFilters}
+                                className="inline-flex items-center gap-1 text-primary hover:underline font-semibold"
+                            >
+                                <RefreshCw className="w-3.5 h-3.5" /> Đặt lại bộ lọc
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -461,7 +548,7 @@ export default function CanLamSangDashboard({ auth, requests = [], stats, servic
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {requests.length === 0 ? (
+                                {requestItems.length === 0 ? (
                                     <tr>
                                         <td colSpan={9} className="px-6 py-14 text-center">
                                             <div className="flex flex-col items-center justify-center text-slate-400">
@@ -472,7 +559,7 @@ export default function CanLamSangDashboard({ auth, requests = [], stats, servic
                                         </td>
                                     </tr>
                                 ) : (
-                                    requests.map((item, index) => {
+                                    requestItems.map((item, index) => {
                                         const bn = item.luot_kham?.benh_nhan || item.luotKham?.benh_nhan;
                                         const bs = item.bac_si || item.bacSi;
                                         const svc = item.dich_vu || item.dichVu;
@@ -485,7 +572,7 @@ export default function CanLamSangDashboard({ auth, requests = [], stats, servic
                                         return (
                                             <tr key={item.MaChiDinh} className="hover:bg-slate-50/70 transition-colors">
                                                 <td className="px-5 py-4 text-center font-black text-slate-400">
-                                                    {index + 1}
+                                                    {((paginatedRequests.current_page ?? 1) - 1) * (paginatedRequests.per_page ?? 10) + index + 1}
                                                 </td>
                                                 <td className="px-5 py-4 font-bold text-primary">
                                                     #{item.MaChiDinh}
@@ -585,6 +672,33 @@ export default function CanLamSangDashboard({ auth, requests = [], stats, servic
                         </table>
                     </div>
                 </div>
+
+                {(paginatedRequests.last_page ?? 1) > 1 && (
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+                        <span>
+                            Hiển thị <strong className="text-slate-800">{paginatedRequests.total ? (paginatedRequests.from ?? 1) : 0}</strong> - <strong className="text-slate-800">{paginatedRequests.total ? (paginatedRequests.to ?? requestItems.length) : 0}</strong> trên <strong className="text-slate-800">{paginatedRequests.total ?? 0}</strong> chỉ định
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => handlePageChange((paginatedRequests.current_page ?? 1) - 1)}
+                                disabled={(paginatedRequests.current_page ?? 1) <= 1}
+                                className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-40"
+                            >
+                                Trang trước
+                            </button>
+                            <span className="font-bold text-slate-800">{paginatedRequests.current_page ?? 1}/{paginatedRequests.last_page ?? 1}</span>
+                            <button
+                                type="button"
+                                onClick={() => handlePageChange((paginatedRequests.current_page ?? 1) + 1)}
+                                disabled={(paginatedRequests.current_page ?? 1) >= (paginatedRequests.last_page ?? 1)}
+                                className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-40"
+                            >
+                                Trang sau
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* MODAL NHẬP KẾT QUẢ CẬN LÂM SÀNG */}

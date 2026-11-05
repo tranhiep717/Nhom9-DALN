@@ -12,7 +12,7 @@ class LuotKham extends Model
     protected $keyType = 'int';
     public $timestamps = false;
 
-    // Cột DB thực tế: MaLuotKham, MaLichHen, MaBenhNhan, MaBacSi, ThoiGianTiepNhan, ThoiGianBatDauKham, ThoiGianKetThucKham, TrangThai, GhiChu
+    // Cột DB thực tế kèm các cột Hybrid Queue
     protected $fillable = [
         'MaLichHen',
         'MaBenhNhan',
@@ -21,8 +21,42 @@ class LuotKham extends Model
         'ThoiGianBatDauKham',
         'ThoiGianKetThucKham',
         'TrangThai',
+        'CoBHYT',
+        'SoTheBHYT',
+        'MucHuongBHYT',
+        'TuyenKCB',
         'GhiChu',
+        'NgayKham',
+        'LoaiHangDoi',
+        'SoPhieu',
+        'STTTrongNgay',
+        'MaChuyenKhoa',
+        'MaCaKham',
+        'MucUuTien',
+        'ThoiGianVaoHang',
+        'ThoiGianGoiKham',
+        'NguoiXacNhanUuTien',
+        'LyDoUuTien',
+        'MaTaiKhoanTiepNhan',
     ];
+
+    // Quan hệ: LuotKham do một Lễ tân (TaiKhoan) tiếp nhận
+    public function nguoiTiepNhan()
+    {
+        return $this->belongsTo(TaiKhoan::class, 'MaTaiKhoanTiepNhan', 'MaTaiKhoan');
+    }
+
+    // Quan hệ: LuotKham thuộc về một ChuyenKhoa
+    public function chuyenKhoa()
+    {
+        return $this->belongsTo(ChuyenKhoa::class, 'MaChuyenKhoa', 'MaChuyenKhoa');
+    }
+
+    // Quan hệ: LuotKham thuộc về một CaKham
+    public function caKham()
+    {
+        return $this->belongsTo(CaKham::class, 'MaCaKham', 'MaCaKham');
+    }
 
     // Quan hệ: LuotKham thuộc về một LichHen
     public function lichHen()

@@ -358,20 +358,10 @@ class LichHenController extends Controller
     }
 
     /**
-     * MÀN HÌNH QUẢN LÝ HÀNG CHỜ CHO LỄ TÂN (Inertia View Receptionist/Queue)
-     * - Kết nối dữ liệu thực tế từ MySQL
-     * - Eager load: Bệnh nhân, Ca khám, Lịch làm việc, Bác sĩ, Chuyên khoa, Lượt khám
-     * - Hỗ trợ lọc theo: Ngày khám, Bác sĩ, Chuyên khoa, Trạng thái, Tìm kiếm
+     * LẤY DỮ LIỆU HÀNG CHỜ PHỤC VỤ CẢ LỄ TÂN VÀ QUẢN TRỊ VIÊN
      */
-    public function queue(Request $request)
+    public function getQueueData(Request $request): array
     {
-        $user = $request->user();
-
-        // Bảo mật: Chỉ Lễ tân và Quản trị viên mới được truy cập màn hình hàng chờ lễ tân
-        if (!$user || (!$user->isLeTan() && !$user->isQuanTriVien())) {
-            abort(403, 'Bạn không có quyền truy cập trang quản lý hàng chờ của lễ tân.');
-        }
-
         $query = LichHen::query()->with([
             'benhNhan:MaBenhNhan,HoTen,SoDienThoai,EmailLienHe,GioiTinh,NgaySinh',
             'caKham:MaCaKham,MaLichLamViec,GioBatDau,GioKetThuc,SoLuongTiepNhan,TrangThai',
@@ -420,6 +410,82 @@ class LichHenController extends Controller
 
         $appointments = $query->orderBy('MaLichHen', 'desc')->get();
 
+        // 2. Truy vấn Hàng đợi Khám tổng hợp (Hybrid Queue: Đặt lịch P2 + Trực tiếp P3)
+        $activeQueueQuery = LuotKham::query()->with([
+            'benhNhan:MaBenhNhan,HoTen,SoDienThoai,GioiTinh,NgaySinh',
+            'bacSi:MaBacSi,HoTen,HocVi,MaChuyenKhoa',
+            'bacSi.chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa',
+            'chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa',
+            'caKham:MaCaKham,GioBatDau,GioKetThuc',
+            'lichHen:MaLichHen,TrangThai',
+        ]);
+
+        if ($effectiveDate && $effectiveDate !== 'all') {
+            $activeQueueQuery->where(function ($q) use ($effectiveDate) {
+                $q->whereDate('NgayKham', $effectiveDate)
+                  ->orWhere(function ($sub) use ($effectiveDate) {
+                      $sub->whereNull('NgayKham')->whereDate('ThoiGianTiepNhan', $effectiveDate);
+                  });
+            });
+        }
+
+        if ($doctorId) {
+            $activeQueueQuery->where('MaBacSi', $doctorId);
+        }
+
+        if ($specialtyId) {
+            $activeQueueQuery->where('MaChuyenKhoa', $specialtyId);
+        }
+
+        // Lọc theo Ca khám
+        $shiftId = $request->input('shift_id', $request->input('ca_kham_id'));
+        if ($shiftId) {
+            $activeQueueQuery->where('MaCaKham', $shiftId);
+        }
+
+        // Lọc theo trạng thái lượt khám
+        if ($status && in_array($status, ['CHO_KHAM', 'DANG_KHAM', 'CHO_KET_QUA', 'CHO_KHAM_LAI', 'HOAN_THANH', 'BO_LUOT'])) {
+            $activeQueueQuery->where('TrangThai', $status);
+        }
+
+        if ($search) {
+            $activeQueueQuery->where(function ($q) use ($search) {
+                $q->where('SoPhieu', 'like', "%{$search}%")
+                  ->orWhereHas('benhNhan', function ($bq) use ($search) {
+                      $bq->where('HoTen', 'like', "%{$search}%")
+                         ->orWhere('SoDienThoai', 'like', "%{$search}%");
+                  });
+            });
+        }
+
+        // PHÂN TRANG SERVER-SIDE CHO BẢNG HÀNG ĐỢI (PHASE 13)
+        // Mặc định 10 bản ghi/trang, cho phép 10, 20, 50 bản ghi/trang
+        $perPage = (int)$request->input('per_page', 10);
+        if (!in_array($perPage, [10, 20, 50])) {
+            $perPage = 10;
+        }
+        $page = max(1, (int)$request->input('page', 1));
+
+        $orderedQueueQuery = $activeQueueQuery
+            ->orderByRaw("CASE WHEN TrangThai = 'DANG_KHAM' THEN 1 WHEN TrangThai IN ('CHO_KHAM', 'CHO_KHAM_LAI') THEN 2 WHEN TrangThai = 'CHO_KET_QUA' THEN 3 ELSE 4 END")
+            ->orderBy('ThoiGianVaoHang', 'asc')
+            ->orderBy('MaLuotKham', 'asc');
+
+        $activeQueue = (clone $orderedQueueQuery)->paginate($perPage, ['*'], 'page', $page)->withQueryString();
+
+        // Nếu trang hiện tại vượt quá trang cuối (sau khi xóa/hủy lượt), tự động chuyển về trang hợp lệ gần nhất
+        if ($page > $activeQueue->lastPage() && $activeQueue->lastPage() > 0) {
+            $page = $activeQueue->lastPage();
+            $activeQueue = (clone $orderedQueueQuery)->paginate($perPage, ['*'], 'page', $page)->withQueryString();
+        }
+
+        // Gán số lần gọi và quyền bỏ lượt cho từng lượt khám trên trang hiện tại
+        $queueService = app(\App\Services\QueueManagementService::class);
+        $activeQueue->getCollection()->each(function ($v) use ($queueService) {
+            $v->call_count = $queueService->getCallCount($v);
+            $v->can_skip = ($v->call_count >= 3 && in_array($v->TrangThai, ['CHO_KHAM', 'CHO_KHAM_LAI']));
+        });
+
         // Danh mục Bác sĩ và Chuyên khoa phục vụ dropdown bộ lọc
         $doctors = BacSi::where('TrangThai', 'HOAT_DONG')
             ->select('MaBacSi', 'HoTen', 'HocVi', 'MaChuyenKhoa')
@@ -431,44 +497,111 @@ class LichHenController extends Controller
             ->orderBy('TenChuyenKhoa', 'asc')
             ->get();
 
+        // Danh mục Bệnh nhân và Ca khám hôm nay phục vụ Modal tiếp nhận trực tiếp
+        $availablePatients = BenhNhan::select('MaBenhNhan', 'HoTen', 'SoDienThoai', 'GioiTinh', 'NgaySinh')
+            ->orderBy('HoTen', 'asc')
+            ->take(100)
+            ->get();
+
+        $shiftsQuery = CaKham::whereIn('TrangThai', ['CON_TRONG', 'MO'])
+            ->with(['lichLamViec.bacSi.chuyenKhoa']);
+
+        if ($effectiveDate && $effectiveDate !== 'all') {
+            $shiftsQuery->whereHas('lichLamViec', function ($q) use ($effectiveDate) {
+                $q->whereDate('NgayLamViec', $effectiveDate);
+            });
+        }
+
+        $availableShifts = $shiftsQuery->get();
+
         // Thống kê nhanh hàng chờ hôm nay
         $todayDate = date('Y-m-d');
         $todayAppointments = LichHen::whereHas('caKham.lichLamViec', function ($q) use ($todayDate) {
             $q->whereDate('NgayLamViec', $todayDate);
         })->get();
 
+        $todayVisits = LuotKham::where(function ($q) use ($todayDate) {
+            $q->whereDate('NgayKham', $todayDate)
+              ->orWhereDate('ThoiGianTiepNhan', $todayDate);
+        })->get();
+
+        $p2Count = $todayVisits->filter(fn($v) => $v->LoaiHangDoi === 'DAT_LICH' || $v->MucUuTien == 2 || !empty($v->MaLichHen))->count();
+        $p3Count = $todayVisits->filter(fn($v) => ($v->LoaiHangDoi === 'TRUC_TIEP' || $v->MucUuTien == 3) && empty($v->MaLichHen))->count();
+
         $stats = [
-            'total_today' => $todayAppointments->count(),
+            'total_today' => $todayAppointments->count() + $todayVisits->where('LoaiHangDoi', 'TRUC_TIEP')->count(),
             'waiting_checkin' => $todayAppointments->whereIn('TrangThai', ['CHO_XAC_NHAN', 'DA_XAC_NHAN'])->count(),
-            'received' => $todayAppointments->where('TrangThai', 'DA_TIEP_NHAN')->count(),
-            'completed' => $todayAppointments->where('TrangThai', 'HOAN_THANH')->count(),
+            'received' => $todayVisits->whereIn('TrangThai', ['CHO_KHAM', 'CHO_KHAM_LAI'])->count(),
+            'examining' => $todayVisits->where('TrangThai', 'DANG_KHAM')->count(),
+            'completed' => $todayVisits->where('TrangThai', 'HOAN_THANH')->count(),
+            'active_in_queue' => $todayVisits->whereIn('TrangThai', ['CHO_KHAM', 'DANG_KHAM', 'CHO_KET_QUA', 'CHO_KHAM_LAI'])->count(),
+            'booked_count' => $p2Count,
+            'walkin_count' => $p3Count,
+            'queue_total' => $activeQueue->total(),
+            'chartStats' => [
+                'statusDistribution' => [
+                    ['name' => 'Chờ khám', 'status' => 'CHO_KHAM', 'value' => $todayVisits->where('TrangThai', 'CHO_KHAM')->count(), 'color' => '#F59E0B'],
+                    ['name' => 'Đang khám', 'status' => 'DANG_KHAM', 'value' => $todayVisits->where('TrangThai', 'DANG_KHAM')->count(), 'color' => '#0284C7'],
+                    ['name' => 'Chờ KQ CLS', 'status' => 'CHO_KET_QUA', 'value' => $todayVisits->where('TrangThai', 'CHO_KET_QUA')->count(), 'color' => '#EAB308'],
+                    ['name' => 'Chờ khám lại', 'status' => 'CHO_KHAM_LAI', 'value' => $todayVisits->where('TrangThai', 'CHO_KHAM_LAI')->count(), 'color' => '#0D9488'],
+                    ['name' => 'Đã xong', 'status' => 'HOAN_THANH', 'value' => $todayVisits->where('TrangThai', 'HOAN_THANH')->count(), 'color' => '#10B981'],
+                    ['name' => 'Bỏ lượt', 'status' => 'BO_LUOT', 'value' => $todayVisits->where('TrangThai', 'BO_LUOT')->count(), 'color' => '#F43F5E'],
+                ],
+                'priorityDistribution' => [
+                    ['name' => 'P2 Đặt lịch', 'value' => $p2Count, 'color' => '#10B981'],
+                    ['name' => 'P3 Trực tiếp', 'value' => $p3Count, 'color' => '#8B5CF6'],
+                ],
+                'totalVisits' => $todayVisits->count(),
+                'totalP2' => $p2Count,
+                'totalP3' => $p3Count,
+            ],
         ];
 
-        return Inertia::render('Receptionist/Queue', [
+        return [
             'appointments' => $appointments,
+            'activeQueue' => $activeQueue,
             'doctors' => $doctors,
             'specialties' => $specialties,
+            'availablePatients' => $availablePatients,
+            'availableShifts' => $availableShifts,
             'stats' => $stats,
             'filters' => [
                 'date' => $effectiveDate,
                 'doctor_id' => $doctorId ? (int)$doctorId : null,
                 'specialty_id' => $specialtyId ? (int)$specialtyId : null,
+                'shift_id' => $shiftId ? (int)$shiftId : null,
                 'status' => $status,
                 'search' => $search,
+                'per_page' => $perPage,
+                'page' => $activeQueue->currentPage(),
             ],
-        ]);
+        ];
     }
 
     /**
-     * DASHBOARD / BÀN LÀM VIỆC LỄ TÂN THỜI GIAN THỰC TỪ MYSQL
+     * MÀN HÌNH QUẢN LÝ HÀNG CHỜ CHO LỄ TÂN (Inertia View Receptionist/Queue)
+     * - Kết nối dữ liệu thực tế từ MySQL
+     * - Eager load: Bệnh nhân, Ca khám, Lịch làm việc, Bác sĩ, Chuyên khoa, Lượt khám
+     * - Hỗ trợ lọc theo: Ngày khám, Bác sĩ, Chuyên khoa, Trạng thái, Tìm kiếm
      */
-    public function receptionistDashboard(Request $request): Response|JsonResponse
+    public function queue(Request $request)
     {
         $user = $request->user();
+
+        // Bảo mật: Chỉ Lễ tân và Quản trị viên mới được truy cập màn hình hàng chờ lễ tân
         if (!$user || (!$user->isLeTan() && !$user->isQuanTriVien())) {
-            abort(403, 'Bạn không có quyền truy cập vào bàn làm việc của Lễ tân.');
+            abort(403, 'Bạn không có quyền truy cập trang quản lý hàng chờ của lễ tân.');
         }
 
+        $data = $this->getQueueData($request);
+        return Inertia::render('Receptionist/Queue', $data);
+    }
+
+    /**
+     * DỮ LIỆU BÀN LÀM VIỆC LỄ TÂN DÙNG CHUNG (LỄ TÂN & ADMIN)
+     */
+    public function getReceptionistDashboardData(Request $request): array
+    {
         $today = now()->toDateString();
 
         // 1. Lịch hẹn hôm nay toàn viện (loại trừ đã hủy)
@@ -543,19 +676,31 @@ class LichHenController extends Controller
             'todayRevenue' => $todayRevenue,
         ];
 
+        return [
+            'stats' => $stats,
+            'appointments' => $todayAppointmentsList,
+        ];
+    }
+
+    /**
+     * DASHBOARD / BÀN LÀM VIỆC LỄ TÂN THỜI GIAN THỰC TỪ MYSQL
+     */
+    public function receptionistDashboard(Request $request): Response|JsonResponse
+    {
+        $user = $request->user();
+        if (!$user || (!$user->isLeTan() && !$user->isQuanTriVien())) {
+            abort(403, 'Bạn không có quyền truy cập vào bàn làm việc của Lễ tân.');
+        }
+
+        $data = $this->getReceptionistDashboardData($request);
+
         if ($request->expectsJson() || $request->is('api/*')) {
             return response()->json([
                 'success' => true,
-                'data' => [
-                    'stats' => $stats,
-                    'appointments' => $todayAppointmentsList,
-                ],
+                'data' => $data,
             ]);
         }
 
-        return Inertia::render('Receptionist/Dashboard', [
-            'stats' => $stats,
-            'appointments' => $todayAppointmentsList,
-        ]);
+        return Inertia::render('Receptionist/Dashboard', $data);
     }
 }

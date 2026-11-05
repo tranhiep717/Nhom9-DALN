@@ -23,6 +23,95 @@ use Inertia\Response;
 class BenhNhanController extends Controller
 {
     /**
+     * Danh sách hồ sơ bệnh nhân dành cho Lễ tân (Inertia page)
+     * Phân trang server-side, tìm kiếm theo tên/SĐT/mã BN.
+     * Không lộ mật khẩu, không lộ thông tin y tế nhạy cảm.
+     */
+    public function receptionistIndex(Request $request): Response
+    {
+        $user = $request->user();
+
+        // Chỉ Lễ tân và Quản trị viên được truy cập
+        if (!$user || (!$user->isLeTan() && !$user->isQuanTriVien())) {
+            abort(403, 'Bạn không có quyền truy cập trang này.');
+        }
+
+        $search = trim((string) $request->input('search', ''));
+        $perPage = min(max((int) $request->input('per_page', 10), 5), 100);
+
+        $query = BenhNhan::query()
+            ->select([
+                'MaBenhNhan', 'HoTen', 'GioiTinh', 'NgaySinh',
+                'SoDienThoai', 'DiaChi', 'EmailLienHe', 'MaTaiKhoan',
+            ]);
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('HoTen', 'like', "%{$search}%")
+                  ->orWhere('SoDienThoai', 'like', "%{$search}%")
+                  ->orWhere('EmailLienHe', 'like', "%{$search}%");
+                if (is_numeric($search)) {
+                    $q->orWhere('MaBenhNhan', (int) $search);
+                }
+            });
+        }
+
+        $patients = $query->orderBy('MaBenhNhan', 'desc')->paginate($perPage)->withQueryString();
+
+        return Inertia::render('Receptionist/Patients', [
+            'auth'    => ['user' => $user],
+            'patients' => $patients,
+            'filters' => [
+                'search'   => $search,
+                'per_page' => $perPage,
+            ],
+        ]);
+    }
+
+    /**
+     * Chi tiết một hồ sơ bệnh nhân dành cho Lễ tân
+     * Kèm theo lịch sử đặt hẹn và các lượt khám gần nhất.
+     */
+    public function receptionistShow(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+        if (!$user || (!$user->isLeTan() && !$user->isQuanTriVien())) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bạn không có quyền truy cập hồ sơ này.',
+            ], 403);
+        }
+
+        $benhNhan = BenhNhan::with([
+            'taiKhoan:MaTaiKhoan,TenDangNhap,Email,TrangThai',
+            'luotKhams' => function ($q) {
+                $q->select([
+                    'MaLuotKham', 'MaBenhNhan', 'MaBacSi', 'ThoiGianTiepNhan',
+                    'TrangThai', 'SoPhieu', 'STTTrongNgay', 'LoaiHangDoi', 'GhiChu'
+                ])->orderBy('MaLuotKham', 'desc')->take(5);
+            },
+            'lichHens' => function ($q) {
+                $q->select([
+                    'MaLichHen', 'MaBenhNhan', 'MaCaKham', 'LyDoKham',
+                    'NgayDat', 'TrangThai'
+                ])->orderBy('MaLichHen', 'desc')->take(5);
+            },
+        ])->find($id);
+
+        if (!$benhNhan) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy hồ sơ bệnh nhân.',
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $benhNhan,
+        ]);
+    }
+
+    /**
      * Danh sách bệnh nhân (tìm kiếm, phân trang)
      * Chỉ dành cho Bác sĩ, Lễ tân và Quản trị viên
      */
@@ -62,6 +151,93 @@ class BenhNhanController extends Controller
             'success' => true,
             'data' => $benhNhans,
         ]);
+    }
+
+    /**
+     * Tìm kiếm nhanh bệnh nhân phục vụ tiếp nhận lễ tân (Debounce Search)
+     */
+    public function search(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if ($user && $user->isBenhNhan()) {
+            return response()->json(['success' => false, 'message' => 'Không có quyền truy cập.'], 403);
+        }
+
+        $q = trim((string) $request->input('q', ''));
+        if (empty($q)) {
+            $patients = BenhNhan::orderBy('MaBenhNhan', 'desc')->take(20)->get();
+            return response()->json([
+                'success' => true,
+                'data' => $patients,
+            ]);
+        }
+
+        $patients = BenhNhan::where(function ($query) use ($q) {
+            $query->where('HoTen', 'like', "%{$q}%")
+                  ->orWhere('SoDienThoai', 'like', "%{$q}%");
+            if (is_numeric($q)) {
+                $query->orWhere('MaBenhNhan', (int)$q);
+            }
+        })
+        ->orderBy('MaBenhNhan', 'desc')
+        ->take(30)
+        ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $patients,
+        ]);
+    }
+
+    /**
+     * Tạo mới hồ sơ bệnh nhân từ quầy lễ tân (cho bệnh nhân vãng lai chưa có hồ sơ)
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (!$user || (!$user->isLeTan() && !$user->isQuanTriVien() && !$user->isBacSi())) {
+            return response()->json(['success' => false, 'message' => 'Bạn không có quyền tạo hồ sơ bệnh nhân.'], 403);
+        }
+
+        $validated = $request->validate([
+            'HoTen' => ['required', 'string', 'max:100'],
+            'SoDienThoai' => [
+                'required',
+                'string',
+                'regex:/^0[0-9]{9}$/',
+                Rule::unique('benh_nhan', 'SoDienThoai'),
+            ],
+            'GioiTinh' => ['required', 'in:NAM,NU,KHAC'],
+            'NgaySinh' => ['nullable', 'date', 'before:today'],
+            'DiaChi' => ['nullable', 'string', 'max:255'],
+            'EmailLienHe' => ['nullable', 'email', 'max:100'],
+            'SoTheBHYT' => ['nullable', 'string', 'max:15'],
+            'MucHuongBHYT' => ['nullable', 'integer', 'in:0,80,95,100'],
+        ], [
+            'HoTen.required' => 'Vui lòng nhập họ và tên bệnh nhân.',
+            'SoDienThoai.required' => 'Vui lòng nhập số điện thoại.',
+            'SoDienThoai.regex' => 'Số điện thoại không hợp lệ (cần 10 chữ số bắt đầu bằng số 0).',
+            'SoDienThoai.unique' => 'Số điện thoại này đã tồn tại trong hệ thống. Vui lòng tìm kiếm hồ sơ bệnh nhân theo số này.',
+            'GioiTinh.required' => 'Vui lòng chọn giới tính.',
+            'NgaySinh.before' => 'Ngày sinh phải trước ngày hiện tại.',
+        ]);
+
+        $benhNhan = BenhNhan::create([
+            'HoTen' => trim($validated['HoTen']),
+            'SoDienThoai' => trim($validated['SoDienThoai']),
+            'GioiTinh' => $validated['GioiTinh'],
+            'NgaySinh' => $validated['NgaySinh'] ?? null,
+            'DiaChi' => $validated['DiaChi'] ?? null,
+            'EmailLienHe' => $validated['EmailLienHe'] ?? null,
+            'SoTheBHYT' => !empty($validated['SoTheBHYT']) ? strtoupper(trim($validated['SoTheBHYT'])) : null,
+            'MucHuongBHYT' => isset($validated['MucHuongBHYT']) ? (int)$validated['MucHuongBHYT'] : 0,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Tạo hồ sơ bệnh nhân {$benhNhan->HoTen} thành công.",
+            'data' => $benhNhan,
+        ], 201);
     }
 
     /**
@@ -239,7 +415,15 @@ class BenhNhanController extends Controller
     public function dashboard(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->isBenhNhan()) {
+        if (!$user) {
+            return redirect()->route('login');
+        }
+
+        if (!$user->isBenhNhan()) {
+            if ($user->isQuanTriVien()) return redirect()->route('admin.dashboard');
+            if ($user->isBacSi()) return redirect()->route('doctor.dashboard');
+            if ($user->isLeTan()) return redirect()->route('receptionist.dashboard');
+            if ($user->isNhanVienCanLamSang()) return redirect()->route('cls.dashboard');
             return redirect()->route('login');
         }
 
@@ -325,7 +509,15 @@ class BenhNhanController extends Controller
     public function profileView(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->isBenhNhan()) {
+        if (!$user) {
+            return redirect()->route('login');
+        }
+
+        if (!$user->isBenhNhan()) {
+            if ($user->isQuanTriVien()) return redirect()->route('admin.dashboard');
+            if ($user->isBacSi()) return redirect()->route('doctor.dashboard');
+            if ($user->isLeTan()) return redirect()->route('receptionist.dashboard');
+            if ($user->isNhanVienCanLamSang()) return redirect()->route('cls.dashboard');
             return redirect()->route('login');
         }
 
@@ -357,7 +549,15 @@ class BenhNhanController extends Controller
     public function medicalHistory(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->isBenhNhan()) {
+        if (!$user) {
+            return redirect()->route('login');
+        }
+
+        if (!$user->isBenhNhan()) {
+            if ($user->isQuanTriVien()) return redirect()->route('admin.dashboard');
+            if ($user->isBacSi()) return redirect()->route('doctor.dashboard');
+            if ($user->isLeTan()) return redirect()->route('receptionist.dashboard');
+            if ($user->isNhanVienCanLamSang()) return redirect()->route('cls.dashboard');
             return redirect()->route('login');
         }
 

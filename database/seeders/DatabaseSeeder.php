@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -12,14 +11,13 @@ class DatabaseSeeder extends Seeder
 
     /**
      * Seed the application's database.
+     *
+     * Chúng tôi không tạo dữ liệu mẫu ngẫu nhiên ở đây nữa.
+     * Tất cả dữ liệu demo nghiệp vụ (bệnh nhân, bác sĩ, lịch làm việc, thuốc, dịch vụ)
+     * phải được tạo từ lệnh smartcare:seed-demo để tránh trùng và sai lệch dữ liệu.
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        $this->command->call('smartcare:seed-demo', ['--force' => true]);
     }
 }

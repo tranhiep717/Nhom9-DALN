@@ -20,6 +20,9 @@ class ChiTietHoaDon extends Model
         'NoiDung',
         'SoLuong',
         'DonGia',
+        'DuocBHYTChiTra',
+        'TienBHYTChiTra',
+        'TienBenhNhanChiTra',
         'MaChiDinh',
         'MaChiTietDonThuoc',
     ];

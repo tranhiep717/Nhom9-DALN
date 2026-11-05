@@ -3,24 +3,24 @@ import InputLabel from '@/Components/InputLabel';
 import PrimaryButton from '@/Components/PrimaryButton';
 import TextInput from '@/Components/TextInput';
 import { Transition } from '@headlessui/react';
-import { Link, useForm, usePage } from '@inertiajs/react';
+import { useForm, usePage } from '@inertiajs/react';
 import { FormEventHandler } from 'react';
 
 export default function UpdateProfileInformation({
-    mustVerifyEmail,
+    mustVerifyEmail = false,
     status,
     className = '',
 }: {
-    mustVerifyEmail: boolean;
+    mustVerifyEmail?: boolean;
     status?: string;
     className?: string;
 }) {
-    const user = usePage().props.auth.user;
+    const user = usePage().props.auth.user as any;
 
     const { data, setData, patch, errors, processing, recentlySuccessful } =
         useForm({
-            name: user.name,
-            email: user.email,
+            name: user?.name || user?.HoTen || user?.TenDangNhap || '',
+            email: user?.email || user?.Email || '',
         });
 
     const submit: FormEventHandler = (e) => {
@@ -33,17 +33,28 @@ export default function UpdateProfileInformation({
         <section className={className}>
             <header>
                 <h2 className="text-lg font-medium text-gray-900">
-                    Profile Information
+                    Thông tin tài khoản
                 </h2>
 
                 <p className="mt-1 text-sm text-gray-600">
-                    Update your account's profile information and email address.
+                    Cập nhật họ tên hiển thị và địa chỉ email liên hệ của bạn.
                 </p>
             </header>
 
             <form onSubmit={submit} className="mt-6 space-y-6">
                 <div>
-                    <InputLabel htmlFor="name" value="Name" />
+                    <InputLabel htmlFor="username" value="Tên đăng nhập" />
+                    <TextInput
+                        id="username"
+                        className="mt-1 block w-full bg-gray-50 text-gray-500 cursor-not-allowed"
+                        value={user?.TenDangNhap || ''}
+                        disabled
+                    />
+                    <p className="mt-1 text-xs text-gray-400">Tên đăng nhập hệ thống được quản lý bảo mật.</p>
+                </div>
+
+                <div>
+                    <InputLabel htmlFor="name" value="Họ và tên" />
 
                     <TextInput
                         id="name"
@@ -59,7 +70,7 @@ export default function UpdateProfileInformation({
                 </div>
 
                 <div>
-                    <InputLabel htmlFor="email" value="Email" />
+                    <InputLabel htmlFor="email" value="Địa chỉ Email" />
 
                     <TextInput
                         id="email"
@@ -74,31 +85,8 @@ export default function UpdateProfileInformation({
                     <InputError className="mt-2" message={errors.email} />
                 </div>
 
-                {mustVerifyEmail && user.email_verified_at === null && (
-                    <div>
-                        <p className="mt-2 text-sm text-gray-800">
-                            Your email address is unverified.
-                            <Link
-                                href={route('verification.send')}
-                                method="post"
-                                as="button"
-                                className="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                            >
-                                Click here to re-send the verification email.
-                            </Link>
-                        </p>
-
-                        {status === 'verification-link-sent' && (
-                            <div className="mt-2 text-sm font-medium text-green-600">
-                                A new verification link has been sent to your
-                                email address.
-                            </div>
-                        )}
-                    </div>
-                )}
-
                 <div className="flex items-center gap-4">
-                    <PrimaryButton disabled={processing}>Save</PrimaryButton>
+                    <PrimaryButton disabled={processing}>Lưu thay đổi</PrimaryButton>
 
                     <Transition
                         show={recentlySuccessful}
@@ -107,8 +95,8 @@ export default function UpdateProfileInformation({
                         leave="transition ease-in-out"
                         leaveTo="opacity-0"
                     >
-                        <p className="text-sm text-gray-600">
-                            Saved.
+                        <p className="text-sm text-emerald-600 font-medium">
+                            Đã lưu thành công.
                         </p>
                     </Transition>
                 </div>
