@@ -85,7 +85,7 @@ Mở 2 cửa sổ Terminal chạy đồng thời:
 
 | Vai trò | Tên đăng nhập | Tên người dùng | Phạm vi chức năng chính |
 | :--- | :--- | :--- | :--- |
-| **Quản trị viên (Admin)** | `admin_demo` | Quản Trị Hệ Thống | Thống kê doanh thu, quản lý tài khoản, bác sĩ, dịch vụ, kho thuốc, phân ca |
+| **Quản trị viên (Admin)** | `admin_demo` | Quản Trị Hệ Thống | Thiết lập danh mục, phân quyền tài khoản, phân ca trực, chấm công & bảng lương, thống kê doanh thu |
 | **Lễ tân (Receptionist)** | `letan_demo` *(hoặc `letan_hoa`)* | Lễ Tân SmartCare | Tiếp đón, phát số phiếu hàng đợi (STT), theo dõi ca khám, thu ngân & hóa đơn |
 | **Bác sĩ (Doctor)** | `bacsi_nam` *(hoặc `bs_hongduc`)* | BS. Nguyễn Văn Nam | Bốc số khám bệnh, ghi chẩn đoán, chỉ định Cận lâm sàng (CLS), kê đơn thuốc |
 | **Cận lâm sàng (CLS)** | `cls_minh` | KTV. Trần Quang Minh | Tiếp nhận mẫu xét nghiệm/chụp X-quang, cập nhật trạng thái và trả kết quả |
@@ -93,12 +93,36 @@ Mở 2 cửa sổ Terminal chạy đồng thời:
 
 ---
 
-## 🔄 4. Quy trình khám chữa bệnh mẫu trên hệ thống (Workflow)
-1. **Lễ tân**: Đăng nhập `letan_demo` -> Vào mục *Hàng đợi* -> Tiếp đón bệnh nhân vào khoa (Hệ thống tự động cấp số phiếu theo ca, ví dụ: `NTQ-C1-001`).
-2. **Bác sĩ**: Đăng nhập `bacsi_nam` -> Vào mục *Khám bệnh* -> Gọi bệnh nhân tiếp theo -> Khám, chỉ định Cận lâm sàng (Xét nghiệm máu, X-Quang,...).
-3. **Kỹ thuật viên CLS**: Đăng nhập `cls_minh` -> Nhận chỉ định -> Thực hiện xét nghiệm -> Nhập kết quả và hoàn thành.
-4. **Bác sĩ**: Xem lại kết quả CLS -> Đưa ra chẩn đoán cuối cùng -> Kê đơn thuốc -> Kết thúc lượt khám.
-5. **Thu ngân / Lễ tân**: Vào mục *Hóa đơn & Thanh toán* -> Lập hóa đơn viện phí (Tự động trừ tiền BHYT chi trả) -> Xác nhận thanh toán tiền mặt/chuyển khoản -> In phiếu thu.
+## 🔄 4. Quy trình nghiệp vụ cốt lõi trên hệ thống
+
+### A. Quy trình Quản trị & Thiết lập Vận hành (Dành cho Quản trị viên - Admin)
+1. **Thiết lập danh mục cơ sở**:
+   - Quản lý **Chuyên khoa**: Cập nhật thông tin các chuyên khoa khám chữa bệnh.
+   - Quản lý **Dịch vụ**: Định cấu hình giá niêm yết, phân loại (Khám bệnh, Xét nghiệm, Chẩn đoán hình ảnh) và điều kiện BHYT.
+   - Quản lý **Kho Dược / Thuốc**: Quản lý danh mục thuốc, hoạt chất, hàm lượng, hạn dùng, đơn giá bán và tỷ lệ hỗ trợ BHYT.
+2. **Quản lý Tài khoản & Nhân sự**:
+   - Tạo mới/khóa tài khoản, phân quyền 5 vai trò trong hệ thống.
+   - Hồ sơ Bác sĩ: Gán bác sĩ vào đúng Chuyên khoa và chỉ định phòng khám làm việc.
+3. **Quản lý Lịch làm việc & Phân ca**:
+   - Xếp lịch trực tuần linh hoạt theo từng phòng khám và từng ca làm việc:
+     - **Ca 1 (Sáng)**: 07:00 - 12:00
+     - **Ca 2 (Chiều)**: 13:00 - 18:00
+4. **Quản trị Nhân sự Nâng cao (Chấm công - Đơn từ - Bảng lương)**:
+   - Giám sát tình trạng check-in/check-out ca trực của toàn bộ nhân viên y tế.
+   - Tiếp nhận và phê duyệt các đơn từ nhân sự (xin nghỉ phép, xin đổi ca trực giữa đồng nghiệp).
+   - Tự động tổng hợp dữ liệu công chuẩn để chốt Bảng lương hàng tháng.
+5. **Giám sát & Báo cáo Doanh thu**:
+   - Dashboard phân tích thời gian thực: Lưu lượng khám trong ngày, số ca đang chờ, luồng vận hành cận lâm sàng.
+   - Giám sát toàn bộ lịch sử hóa đơn thanh toán và xuất báo cáo tài chính/doanh thu.
+
+---
+
+### B. Quy trình Khám chữa bệnh liên thông (Lâm sàng & Tiếp đón)
+1. **Lễ tân tiếp đón & Phát số**: Bệnh nhân đến khám -> Lễ tân nhập thông tin/BHYT -> Hệ thống tự động cấp số phiếu hàng đợi theo ca (ví dụ: `NTQ-C1-001`).
+2. **Bác sĩ khám bệnh**: Đăng nhập `bacsi_nam` -> Vào phòng khám -> Bấm gọi số tiếp theo -> Khám sơ bộ, ghi triệu chứng -> Chỉ định Dịch vụ Cận lâm sàng (CLS) nếu cần.
+3. **Kỹ thuật viên thực hiện CLS**: Kỹ thuật viên `cls_minh` nhận chỉ định -> Lấy mẫu/chụp chiếu -> Cập nhật trạng thái "Đang thực hiện" -> Điền kết quả/kết luận -> Hoàn tất.
+4. **Bác sĩ hoàn tất bệnh án**: Bác sĩ xem kết quả CLS vừa trả về ngay trên màn hình -> Chẩn đoán bệnh cuối cùng (mã ICD-10) -> Kê đơn thuốc từ kho dược -> Kết thúc lượt khám.
+5. **Thu ngân xuất hóa đơn**: Lễ tân/Thu ngân mở hồ sơ lượt khám -> Hệ thống tự động tính toán tổng tiền, chiết khấu và phần BHYT chi trả -> Thu tiền viện phí (tiền mặt / chuyển khoản) -> Đóng lượt khám.
 
 ---
 
