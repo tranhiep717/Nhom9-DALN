@@ -118,11 +118,28 @@ Mở 2 cửa sổ Terminal chạy đồng thời:
 ---
 
 ### B. Quy trình Khám chữa bệnh liên thông (Lâm sàng & Tiếp đón)
-1. **Lễ tân tiếp đón & Phát số**: Bệnh nhân đến khám -> Lễ tân nhập thông tin/BHYT -> Hệ thống tự động cấp số phiếu hàng đợi theo ca (ví dụ: `NTQ-C1-001`).
-2. **Bác sĩ khám bệnh**: Đăng nhập `bacsi_nam` -> Vào phòng khám -> Bấm gọi số tiếp theo -> Khám sơ bộ, ghi triệu chứng -> Chỉ định Dịch vụ Cận lâm sàng (CLS) nếu cần.
-3. **Kỹ thuật viên thực hiện CLS**: Kỹ thuật viên `cls_minh` nhận chỉ định -> Lấy mẫu/chụp chiếu -> Cập nhật trạng thái "Đang thực hiện" -> Điền kết quả/kết luận -> Hoàn tất.
-4. **Bác sĩ hoàn tất bệnh án**: Bác sĩ xem kết quả CLS vừa trả về ngay trên màn hình -> Chẩn đoán bệnh cuối cùng (mã ICD-10) -> Kê đơn thuốc từ kho dược -> Kết thúc lượt khám.
-5. **Thu ngân xuất hóa đơn**: Lễ tân/Thu ngân mở hồ sơ lượt khám -> Hệ thống tự động tính toán tổng tiền, chiết khấu và phần BHYT chi trả -> Thu tiền viện phí (tiền mặt / chuyển khoản) -> Đóng lượt khám.
+1. **Bắt đầu ca trực (Staff Check-in)**:
+   - Đầu ca làm việc, Bác sĩ (`bacsi_nam`) và Kỹ thuật viên CLS (`cls_minh`) đăng nhập vào hệ thống -> Bấm **Check-in / Điểm danh vào ca** tại thẻ điểm danh nhanh trên giao diện.
+   - Hệ thống tự động đối soát với lịch trực tuần và chuyển trạng thái nhân sự sang *Đang trong ca trực*, kích hoạt phòng khám sẵn sàng đón tiếp bệnh nhân.
+2. **Lễ tân tiếp đón & Phát số hàng đợi**:
+   - Bệnh nhân đến khám -> Lễ tân (`letan_demo`) kiểm tra thông tin hành chính, thẻ BHYT và chuyên khoa cần khám.
+   - Hệ thống tự động cấp số phiếu hàng đợi chuẩn hóa theo ca khám (ví dụ: `NTQ-C1-001` - Nội tổng quát, Ca 1, Số 001) và tự động xếp vào hàng đợi phòng khám.
+3. **Bác sĩ khám bệnh & Chỉ định cận lâm sàng**:
+   - Bác sĩ vào giao diện phòng khám -> Bấm **Gọi số tiếp theo** từ danh sách hàng đợi thời gian thực.
+   - Khám lâm sàng, ghi nhận triệu chứng, tiền sử bệnh -> Chỉ định các dịch vụ Cận lâm sàng (Xét nghiệm máu, X-quang, Siêu âm...) nếu cần chẩn đoán chuyên sâu.
+4. **Kỹ thuật viên thực hiện Cận lâm sàng (CLS)**:
+   - Kỹ thuật viên CLS (`cls_minh`) theo dõi danh sách chờ thực hiện -> Tiếp nhận bệnh nhân, lấy mẫu / chụp chiếu.
+   - Cập nhật trạng thái *Đang thực hiện* -> Nhập kết quả đo đạc, tải hình ảnh/kết luận -> Bấm *Hoàn tất trả kết quả*.
+5. **Bác sĩ kết luận bệnh án & Kê đơn thuốc**:
+   - Bác sĩ xem kết quả xét nghiệm/hình ảnh CLS được đồng bộ tức thì trên màn hình khám -> Đưa ra chẩn đoán xác định (mã bệnh ICD-10).
+   - Kê đơn thuốc từ Kho dược trực tuyến (hệ thống tự tính liều lượng, đơn giá và tỷ lệ chi trả của BHYT) -> Bấm *Kết thúc lượt khám*.
+6. **Thu ngân xuất hóa đơn & Thu viện phí**:
+   - Lễ tân / Thu ngân mở hồ sơ lượt khám tại mục *Hóa đơn & Thanh toán*.
+   - Hệ thống tự động tổng hợp viện phí khám, phí dịch vụ CLS và tiền thuốc; tự động khấu trừ phần BHYT chi trả.
+   - Xác nhận thu tiền (Tiền mặt hoặc Chuyển khoản QR) -> In phiếu thu hóa đơn cho bệnh nhân -> Đóng hoàn tất hồ sơ khám.
+7. **Kết thúc ca trực (Staff Check-out)**:
+   - Khi kết thúc giờ làm việc, Bác sĩ và Kỹ thuật viên bấm **Check-out ra ca**.
+   - Hệ thống tự động chốt thời gian làm việc thực tế, tính toán đi muộn/về sớm (nếu có) và tự động đồng bộ sang Bảng chấm công của Admin để phục vụ tính lương.
 
 ---
 
