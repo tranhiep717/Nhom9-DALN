@@ -1,59 +1,108 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# 🏥 SMARTCARE - HỆ THỐNG QUẢN LÝ PHÒNG KHÁM ĐA KHOA
+> **Đồ án Lập trình / Đồ án Chuyên ngành - Nhóm 9**  
+> Công nghệ: **Laravel 11 (PHP 8.2+) + Inertia.js + React (TypeScript) + TailwindCSS + MySQL**
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+---
 
-## About Laravel
+## 📌 1. Yêu cầu môi trường máy tính
+Để chạy được dự án, máy của bạn cần cài đặt:
+- **PHP >= 8.2** (Khuyên dùng XAMPP / Laragon mới nhất)
+- **Composer** (bản 2.x)
+- **Node.js** (khuyên dùng Node 18 hoặc 20 LTS)
+- **MySQL / MariaDB**
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## 🚀 2. Hướng dẫn Kéo Code và Chạy Dự Án (Dành cho thành viên nhóm)
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+### Bước 1: Kéo code mới nhất về máy
+- **Nếu dùng GitHub Desktop**:
+  - Mở GitHub Desktop -> Chọn repo `Nhom9-DALN`.
+  - Bấm nút **Fetch origin**, sau đó bấm **Pull origin** để lấy toàn bộ code mới nhất.
+- **Nếu dùng Terminal / Git Bash**:
+  ```bash
+  git pull origin main
+  ```
 
-## Learning Laravel
+### Bước 2: Cài đặt thư viện phụ thuộc (Dependencies)
+Mở Terminal tại thư mục gốc dự án và chạy:
+```bash
+composer install
+npm install
+```
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+### Bước 3: Cấu hình file môi trường `.env`
+1. Nếu chưa có file `.env`, copy từ file `.env.example`:
+   ```bash
+   cp .env.example .env
+   ```
+2. Mở file `.env`, kiểm tra và chỉnh lại cấu hình database:
+   ```env
+   DB_CONNECTION=mysql
+   DB_HOST=127.0.0.1
+   DB_PORT=3306
+   DB_DATABASE=phong_kham_rehearsal_test
+   DB_USERNAME=root
+   DB_PASSWORD=
+   ```
+3. Tạo key cho ứng dụng nếu chưa có:
+   ```bash
+   php artisan key:generate
+   ```
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+### Bước 4: Nạp Cơ sở dữ liệu (Database)
+Có 2 cách để nạp dữ liệu chuẩn (Khuyên dùng Cách 1):
 
-## Laravel Sponsors
+* **Cách 1 (Khuyên dùng - Nhanh & đầy đủ 100% dữ liệu mẫu, Trigger & Stored Procedure)**:
+  1. Mở phpMyAdmin (hoặc Navicat / HeidiSQL / MySQL Workbench).
+  2. Tạo database mới tên là: `phong_kham_rehearsal_test` (bảng mã `utf8mb4_unicode_ci`).
+  3. Bấm vào database vừa tạo -> Chọn tab **Import (Nhập)** -> Chọn file:
+     `database/sql/smartcare_clean_demo.sql`
+  4. Bấm nút **Import / Thực hiện**.
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+* **Cách 2 (Dùng lệnh Laravel Artisan thuần)**:
+  ```bash
+  php artisan migrate:fresh
+  php artisan smartcare:seed-demo --force
+  ```
 
-### Premium Partners
+### Bước 5: Khởi động ứng dụng
+Mở 2 cửa sổ Terminal chạy đồng thời:
+- **Terminal 1 (Backend Laravel):**
+  ```bash
+  php artisan serve
+  ```
+- **Terminal 2 (Frontend React/Vite):**
+  ```bash
+  npm run dev
+  ```
+👉 Truy cập ứng dụng tại trình duyệt: **http://127.0.0.1:8000**
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+---
 
-## Contributing
+## 👥 3. Danh sách tài khoản thử nghiệm theo các vai trò
+> **Mật khẩu chung cho tất cả tài khoản:** `SmartCare@2026`
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+| Vai trò | Tên đăng nhập | Tên người dùng | Phạm vi chức năng chính |
+| :--- | :--- | :--- | :--- |
+| **Quản trị viên (Admin)** | `admin_demo` | Quản Trị Hệ Thống | Thống kê doanh thu, quản lý tài khoản, bác sĩ, dịch vụ, kho thuốc, phân ca |
+| **Lễ tân (Receptionist)** | `letan_demo` *(hoặc `letan_hoa`)* | Lễ Tân SmartCare | Tiếp đón, phát số phiếu hàng đợi (STT), theo dõi ca khám, thu ngân & hóa đơn |
+| **Bác sĩ (Doctor)** | `bacsi_nam` *(hoặc `bs_hongduc`)* | BS. Nguyễn Văn Nam | Bốc số khám bệnh, ghi chẩn đoán, chỉ định Cận lâm sàng (CLS), kê đơn thuốc |
+| **Cận lâm sàng (CLS)** | `cls_minh` | KTV. Trần Quang Minh | Tiếp nhận mẫu xét nghiệm/chụp X-quang, cập nhật trạng thái và trả kết quả |
+| **Bệnh nhân (Patient)** | `benhnhan_an` | Nguyễn Văn An | Xem lịch hẹn, hồ sơ bệnh án, lịch sử đơn thuốc và hóa đơn viện phí |
 
-## Code of Conduct
+---
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## 🔄 4. Quy trình khám chữa bệnh mẫu trên hệ thống (Workflow)
+1. **Lễ tân**: Đăng nhập `letan_demo` -> Vào mục *Hàng đợi* -> Tiếp đón bệnh nhân vào khoa (Hệ thống tự động cấp số phiếu theo ca, ví dụ: `NTQ-C1-001`).
+2. **Bác sĩ**: Đăng nhập `bacsi_nam` -> Vào mục *Khám bệnh* -> Gọi bệnh nhân tiếp theo -> Khám, chỉ định Cận lâm sàng (Xét nghiệm máu, X-Quang,...).
+3. **Kỹ thuật viên CLS**: Đăng nhập `cls_minh` -> Nhận chỉ định -> Thực hiện xét nghiệm -> Nhập kết quả và hoàn thành.
+4. **Bác sĩ**: Xem lại kết quả CLS -> Đưa ra chẩn đoán cuối cùng -> Kê đơn thuốc -> Kết thúc lượt khám.
+5. **Thu ngân / Lễ tân**: Vào mục *Hóa đơn & Thanh toán* -> Lập hóa đơn viện phí (Tự động trừ tiền BHYT chi trả) -> Xác nhận thanh toán tiền mặt/chuyển khoản -> In phiếu thu.
 
-## Security Vulnerabilities
+---
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## ⚠️ 5. Lưu ý cho thành viên khi làm việc nhóm trên Git
+- Không bao giờ commit file `.env` lên GitHub (mỗi người tự giữ file `.env` riêng trên máy).
+- Khi có thay đổi về database (thêm cột, thêm bảng), hãy tạo migration mới hoặc xuất lại file backup `database/sql/smartcare_clean_demo.sql` để đồng bộ cho cả nhóm.
+- Trước khi bắt đầu làm tính năng mới, luôn bấm **Fetch / Pull** trên GitHub Desktop để tránh bị xung đột code (conflict).
