@@ -6,6 +6,7 @@ use App\Models\TaiKhoan;
 use App\Models\VaiTro;
 use App\Models\BenhNhan;
 use App\Models\BacSi;
+use App\Models\NhanVien;
 use App\Models\ChuyenKhoa;
 use App\Models\DichVu;
 use App\Models\Thuoc;
@@ -143,13 +144,26 @@ class AdminController extends Controller
      */
     public function usersIndex(Request $request): InertiaResponse|JsonResponse
     {
-        $query = TaiKhoan::query()->with('vaiTro:MaVaiTro,TenVaiTro,MoTa');
+        $query = TaiKhoan::query()->with([
+            'vaiTro:MaVaiTro,TenVaiTro,MoTa',
+            'bacSi' => function ($q) {
+                $q->select('MaBacSi', 'MaTaiKhoan', 'HoTen', 'MaChuyenKhoa', 'EmailLienHe', 'SoDienThoai')
+                  ->with('chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa');
+            },
+            'nhanVien:MaNhanVien,MaTaiKhoan,HoTen,LoaiNhanVien,SoDienThoai,EmailLienHe'
+        ]);
 
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('TenDangNhap', 'like', "%{$search}%")
                   ->orWhere('Email', 'like', "%{$search}%")
-                  ->orWhere('MaTaiKhoan', $search);
+                  ->orWhere('MaTaiKhoan', $search)
+                  ->orWhereHas('bacSi', function ($bq) use ($search) {
+                      $bq->where('HoTen', 'like', "%{$search}%");
+                  })
+                  ->orWhereHas('nhanVien', function ($nq) use ($search) {
+                      $nq->where('HoTen', 'like', "%{$search}%");
+                  });
             });
         }
 
@@ -164,6 +178,17 @@ class AdminController extends Controller
         $users = $query->orderBy('MaTaiKhoan', 'desc')->get();
         $roles = VaiTro::all();
 
+        // Danh sách bác sĩ chưa có tài khoản đăng nhập (để Admin gán khi tạo hoặc sửa tài khoản)
+        $unlinkedDoctors = BacSi::whereNull('MaTaiKhoan')
+            ->with('chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa')
+            ->orderBy('HoTen', 'asc')
+            ->get(['MaBacSi', 'HoTen', 'MaChuyenKhoa', 'EmailLienHe', 'SoDienThoai']);
+
+        // Danh sách nhân viên (Lễ tân, CLS...) chưa có tài khoản đăng nhập
+        $unlinkedStaff = NhanVien::whereNull('MaTaiKhoan')
+            ->orderBy('HoTen', 'asc')
+            ->get(['MaNhanVien', 'HoTen', 'LoaiNhanVien', 'SoDienThoai', 'EmailLienHe']);
+
         // Ẩn mật khẩu tuyệt đối
         $safeUsers = $users->map(function ($u) {
             unset($u->MatKhau);
@@ -175,12 +200,16 @@ class AdminController extends Controller
                 'success' => true,
                 'data' => $safeUsers,
                 'roles' => $roles,
+                'unlinkedDoctors' => $unlinkedDoctors,
+                'unlinkedStaff' => $unlinkedStaff,
             ]);
         }
 
         return Inertia::render('Admin/Accounts', [
             'users' => $safeUsers,
             'roles' => $roles,
+            'unlinkedDoctors' => $unlinkedDoctors,
+            'unlinkedStaff' => $unlinkedStaff,
             'filters' => $request->only(['search', 'role_id', 'status']),
         ]);
     }
@@ -193,6 +222,8 @@ class AdminController extends Controller
             'MatKhau' => ['required', 'string', 'min:6'],
             'MaVaiTro' => ['required', 'exists:vai_tro,MaVaiTro'],
             'TrangThai' => ['sometimes', 'string', 'in:HOAT_DONG,KHOA'],
+            'MaBacSi' => ['nullable', 'integer', 'exists:bac_si,MaBacSi'],
+            'MaNhanVien' => ['nullable', 'integer', 'exists:nhan_vien,MaNhanVien'],
         ], [
             'TenDangNhap.required' => 'Vui lòng nhập tên đăng nhập.',
             'TenDangNhap.unique' => 'Tên đăng nhập đã được sử dụng.',
@@ -201,25 +232,87 @@ class AdminController extends Controller
             'Email.unique' => 'Email đã tồn tại trong hệ thống.',
             'MatKhau.min' => 'Mật khẩu phải từ 6 ký tự trở lên.',
             'MaVaiTro.exists' => 'Vai trò không hợp lệ.',
+            'MaBacSi.exists' => 'Bác sĩ được chọn không tồn tại trong hệ thống.',
+            'MaNhanVien.exists' => 'Nhân viên được chọn không tồn tại trong hệ thống.',
         ]);
 
-        $account = TaiKhoan::create([
-            'TenDangNhap' => $validated['TenDangNhap'],
-            'Email' => $validated['Email'],
-            'MatKhau' => Hash::make($validated['MatKhau']),
-            'MaVaiTro' => $validated['MaVaiTro'],
-            'TrangThai' => $validated['TrangThai'] ?? 'HOAT_DONG',
-            'NgayTao' => now(),
-        ]);
+        return DB::transaction(function () use ($validated) {
+            $maBacSi = $validated['MaBacSi'] ?? null;
+            $maNhanVien = $validated['MaNhanVien'] ?? null;
 
-        $account->load('vaiTro:MaVaiTro,TenVaiTro');
-        unset($account->MatKhau);
+            // Nếu có chọn Bác sĩ, kiểm tra xem bác sĩ này đã có tài khoản chưa
+            if ($maBacSi) {
+                $doctor = BacSi::lockForUpdate()->find($maBacSi);
+                if (!$doctor) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Không tìm thấy hồ sơ bác sĩ được chọn.',
+                    ], 404);
+                }
+                if ($doctor->MaTaiKhoan) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Bác sĩ '{$doctor->HoTen}' đã được liên kết với một tài khoản khác trong hệ thống.",
+                    ], 422);
+                }
+            }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Tạo tài khoản người dùng thành công.',
-            'data' => $account,
-        ], 201);
+            // Nếu có chọn Nhân viên, kiểm tra xem nhân viên này đã có tài khoản chưa
+            if ($maNhanVien) {
+                $staff = NhanVien::lockForUpdate()->find($maNhanVien);
+                if (!$staff) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Không tìm thấy hồ sơ nhân viên được chọn.',
+                    ], 404);
+                }
+                if ($staff->MaTaiKhoan) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Nhân viên '{$staff->HoTen}' đã được liên kết với một tài khoản khác trong hệ thống.",
+                    ], 422);
+                }
+            }
+
+            $account = TaiKhoan::create([
+                'TenDangNhap' => $validated['TenDangNhap'],
+                'Email' => $validated['Email'],
+                'MatKhau' => Hash::make($validated['MatKhau']),
+                'MaVaiTro' => $validated['MaVaiTro'],
+                'TrangThai' => $validated['TrangThai'] ?? 'HOAT_DONG',
+                'NgayTao' => now(),
+            ]);
+
+            // Gán tài khoản cho bác sĩ được chọn
+            if ($maBacSi) {
+                BacSi::where('MaBacSi', $maBacSi)->update(['MaTaiKhoan' => $account->MaTaiKhoan]);
+            }
+
+            // Gán tài khoản cho nhân viên được chọn
+            if ($maNhanVien) {
+                NhanVien::where('MaNhanVien', $maNhanVien)->update(['MaTaiKhoan' => $account->MaTaiKhoan]);
+            }
+
+            $account->load([
+                'vaiTro:MaVaiTro,TenVaiTro,MoTa',
+                'bacSi.chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa',
+                'nhanVien:MaNhanVien,MaTaiKhoan,HoTen,LoaiNhanVien,SoDienThoai'
+            ]);
+            unset($account->MatKhau);
+
+            $msg = 'Tạo tài khoản người dùng thành công.';
+            if ($maBacSi) {
+                $msg = "Tạo tài khoản và gán thành công cho Bác sĩ {$account->bacSi?->HoTen}.";
+            } elseif ($maNhanVien) {
+                $msg = "Tạo tài khoản và gán thành công cho Nhân viên {$account->nhanVien?->HoTen}.";
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $msg,
+                'data' => $account,
+            ], 201);
+        });
     }
 
     public function usersUpdate(Request $request, int $id): JsonResponse
@@ -231,6 +324,8 @@ class AdminController extends Controller
             'MaVaiTro' => ['required', 'exists:vai_tro,MaVaiTro'],
             'MatKhau' => ['nullable', 'string', 'min:6'],
             'TrangThai' => ['sometimes', 'string', 'in:HOAT_DONG,KHOA'],
+            'MaBacSi' => ['nullable', 'integer', 'exists:bac_si,MaBacSi'],
+            'MaNhanVien' => ['nullable', 'integer', 'exists:nhan_vien,MaNhanVien'],
         ]);
 
         return DB::transaction(function () use ($currentUser, $validated, $id) {
@@ -292,7 +387,64 @@ class AdminController extends Controller
             }
 
             $targetUser->update($updateData);
-            $targetUser->load('vaiTro:MaVaiTro,TenVaiTro');
+
+            // Xử lý gán / đổi Bác sĩ nếu có gửi lên MaBacSi
+            if (array_key_exists('MaBacSi', $validated)) {
+                $newMaBacSi = $validated['MaBacSi'];
+                $currentDoctor = BacSi::where('MaTaiKhoan', $targetUser->MaTaiKhoan)->first();
+
+                if ($newMaBacSi) {
+                    if (!$currentDoctor || $currentDoctor->MaBacSi != $newMaBacSi) {
+                        $targetDoctor = BacSi::lockForUpdate()->find($newMaBacSi);
+                        if ($targetDoctor && $targetDoctor->MaTaiKhoan && $targetDoctor->MaTaiKhoan !== $targetUser->MaTaiKhoan) {
+                            return response()->json([
+                                'success' => false,
+                                'message' => "Bác sĩ '{$targetDoctor->HoTen}' đã được gán cho tài khoản khác.",
+                            ], 422);
+                        }
+                        if ($currentDoctor) {
+                            $currentDoctor->update(['MaTaiKhoan' => null]);
+                        }
+                        BacSi::where('MaBacSi', $newMaBacSi)->update(['MaTaiKhoan' => $targetUser->MaTaiKhoan]);
+                    }
+                } else {
+                    if ($currentDoctor) {
+                        $currentDoctor->update(['MaTaiKhoan' => null]);
+                    }
+                }
+            }
+
+            // Xử lý gán / đổi Nhân viên nếu có gửi lên MaNhanVien
+            if (array_key_exists('MaNhanVien', $validated)) {
+                $newMaNhanVien = $validated['MaNhanVien'];
+                $currentStaff = NhanVien::where('MaTaiKhoan', $targetUser->MaTaiKhoan)->first();
+
+                if ($newMaNhanVien) {
+                    if (!$currentStaff || $currentStaff->MaNhanVien != $newMaNhanVien) {
+                        $targetStaff = NhanVien::lockForUpdate()->find($newMaNhanVien);
+                        if ($targetStaff && $targetStaff->MaTaiKhoan && $targetStaff->MaTaiKhoan !== $targetUser->MaTaiKhoan) {
+                            return response()->json([
+                                'success' => false,
+                                'message' => "Nhân viên '{$targetStaff->HoTen}' đã được gán cho tài khoản khác.",
+                            ], 422);
+                        }
+                        if ($currentStaff) {
+                            $currentStaff->update(['MaTaiKhoan' => null]);
+                        }
+                        NhanVien::where('MaNhanVien', $newMaNhanVien)->update(['MaTaiKhoan' => $targetUser->MaTaiKhoan]);
+                    }
+                } else {
+                    if ($currentStaff) {
+                        $currentStaff->update(['MaTaiKhoan' => null]);
+                    }
+                }
+            }
+
+            $targetUser->load([
+                'vaiTro:MaVaiTro,TenVaiTro,MoTa',
+                'bacSi.chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa',
+                'nhanVien:MaNhanVien,MaTaiKhoan,HoTen,LoaiNhanVien,SoDienThoai'
+            ]);
             unset($targetUser->MatKhau);
 
             return response()->json([

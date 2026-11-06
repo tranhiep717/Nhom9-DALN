@@ -20,6 +20,7 @@ use App\Http\Controllers\AiChatController;
 use App\Http\Controllers\CanLamSangController;
 use App\Http\Controllers\ChamCongController;
 use App\Http\Controllers\ThongBaoController;
+use App\Http\Controllers\NhanVienController;
 
 // Public routes
 Route::get('/', function () {
@@ -88,26 +89,26 @@ Route::prefix('doctor')->name('doctor.')->middleware(['auth', 'role:BAC_SI'])->g
     Route::get('/examine', [LuotKhamController::class, 'index'])->name('examine');
     Route::get('/visits', [LuotKhamController::class, 'index'])->name('visits.index');
     Route::get('/visits/{id}', [LuotKhamController::class, 'show'])->name('visits.show');
-    Route::post('/visits/{id}/start', [LuotKhamController::class, 'startExamine'])->name('visits.start');
-    Route::post('/visits/{id}/phieu-kham', [LuotKhamController::class, 'savePhieuKham'])->name('visits.phieu-kham');
-    Route::post('/visits/{id}/complete', [LuotKhamController::class, 'completeExamine'])->name('visits.complete');
-    Route::post('/queue/call-next', [LuotKhamController::class, 'callNextPatient'])->name('queue.call-next');
-    Route::post('/queue/call-speaker', [LuotKhamController::class, 'recordPatientCall'])->name('queue.call-speaker');
-    Route::post('/queue/skip-patient', [LuotKhamController::class, 'skipPatient'])->name('queue.skip-patient');
-    Route::post('/queue/cls-return', [LuotKhamController::class, 'recordClsReturn'])->name('queue.cls-return');
+    Route::post('/visits/{id}/start', [LuotKhamController::class, 'startExamine'])->name('visits.start')->middleware('staff.checked_in');
+    Route::post('/visits/{id}/phieu-kham', [LuotKhamController::class, 'savePhieuKham'])->name('visits.phieu-kham')->middleware('staff.checked_in');
+    Route::post('/visits/{id}/complete', [LuotKhamController::class, 'completeExamine'])->name('visits.complete')->middleware('staff.checked_in');
+    Route::post('/queue/call-next', [LuotKhamController::class, 'callNextPatient'])->name('queue.call-next')->middleware('staff.checked_in');
+    Route::post('/queue/call-speaker', [LuotKhamController::class, 'recordPatientCall'])->name('queue.call-speaker')->middleware('staff.checked_in');
+    Route::post('/queue/skip-patient', [LuotKhamController::class, 'skipPatient'])->name('queue.skip-patient')->middleware('staff.checked_in');
+    Route::post('/queue/cls-return', [LuotKhamController::class, 'recordClsReturn'])->name('queue.cls-return')->middleware('staff.checked_in');
 
     // Kê đơn thuốc
     Route::get('/medicines', [ThuocController::class, 'index'])->name('medicines.index');
-    Route::post('/prescriptions', [DonThuocController::class, 'store'])->name('prescriptions.store');
-    Route::put('/prescriptions/{id}', [DonThuocController::class, 'update'])->name('prescriptions.update');
-    Route::post('/prescriptions/{id}/cancel', [DonThuocController::class, 'cancel'])->name('prescriptions.cancel');
+    Route::post('/prescriptions', [DonThuocController::class, 'store'])->name('prescriptions.store')->middleware('staff.checked_in');
+    Route::put('/prescriptions/{id}', [DonThuocController::class, 'update'])->name('prescriptions.update')->middleware('staff.checked_in');
+    Route::post('/prescriptions/{id}/cancel', [DonThuocController::class, 'cancel'])->name('prescriptions.cancel')->middleware('staff.checked_in');
 
     // Chỉ định dịch vụ cận lâm sàng
     Route::get('/services', [ChiDinhDichVuController::class, 'services'])->name('services.index');
     Route::get('/service-requests', [ChiDinhDichVuController::class, 'index'])->name('service-requests.index');
-    Route::post('/service-requests', [ChiDinhDichVuController::class, 'store'])->name('service-requests.store');
-    Route::post('/service-requests/{id}/result', [ChiDinhDichVuController::class, 'updateResult'])->name('service-requests.result');
-    Route::post('/service-requests/{id}/status', [ChiDinhDichVuController::class, 'updateStatus'])->name('service-requests.status');
+    Route::post('/service-requests', [ChiDinhDichVuController::class, 'store'])->name('service-requests.store')->middleware('staff.checked_in');
+    Route::post('/service-requests/{id}/result', [ChiDinhDichVuController::class, 'updateResult'])->name('service-requests.result')->middleware('staff.checked_in');
+    Route::post('/service-requests/{id}/status', [ChiDinhDichVuController::class, 'updateStatus'])->name('service-requests.status')->middleware('staff.checked_in');
     
     // Quản lý Lịch làm việc
     Route::get('/schedule', [LichLamViecController::class, 'index'])->name('schedule');
@@ -149,18 +150,18 @@ Route::prefix('receptionist')->name('receptionist.')->middleware(['auth', 'role:
     Route::get('/payment', [HoaDonController::class, 'index'])->name('payment');
     Route::get('/invoices', [HoaDonController::class, 'index'])->name('invoices.index');
     Route::get('/invoices/{id}', [HoaDonController::class, 'show'])->name('invoices.show');
-    Route::post('/invoices', [HoaDonController::class, 'store'])->name('invoices.store');
-    Route::post('/invoices/{id}/pay', [HoaDonController::class, 'pay'])->name('invoices.pay');
-    Route::post('/invoices/{id}/cancel', [HoaDonController::class, 'cancel'])->name('invoices.cancel');
+    Route::post('/invoices', [HoaDonController::class, 'store'])->name('invoices.store')->middleware('staff.checked_in');
+    Route::post('/invoices/{id}/pay', [HoaDonController::class, 'pay'])->name('invoices.pay')->middleware('staff.checked_in');
+    Route::post('/invoices/{id}/cancel', [HoaDonController::class, 'cancel'])->name('invoices.cancel')->middleware('staff.checked_in');
 
     // Quản lý Tiếp nhận bệnh nhân & Lượt khám
     Route::get('/patients/search', [BenhNhanController::class, 'search'])->name('patients.search');
-    Route::post('/patients', [BenhNhanController::class, 'store'])->name('patients.store');
+    Route::post('/patients', [BenhNhanController::class, 'store'])->name('patients.store')->middleware('staff.checked_in');
     Route::get('/visits', [LuotKhamController::class, 'index'])->name('visits.index');
-    Route::post('/visits', [LuotKhamController::class, 'store'])->name('visits.store');
-    Route::post('/queue/cls-return', [LuotKhamController::class, 'recordClsReturn'])->name('queue.cls-return');
-    Route::post('/queue/call-speaker', [LuotKhamController::class, 'recordPatientCall'])->name('queue.call-speaker');
-    Route::post('/queue/skip-patient', [LuotKhamController::class, 'skipPatient'])->name('queue.skip-patient');
+    Route::post('/visits', [LuotKhamController::class, 'store'])->name('visits.store')->middleware('staff.checked_in');
+    Route::post('/queue/cls-return', [LuotKhamController::class, 'recordClsReturn'])->name('queue.cls-return')->middleware('staff.checked_in');
+    Route::post('/queue/call-speaker', [LuotKhamController::class, 'recordPatientCall'])->name('queue.call-speaker')->middleware('staff.checked_in');
+    Route::post('/queue/skip-patient', [LuotKhamController::class, 'skipPatient'])->name('queue.skip-patient')->middleware('staff.checked_in');
 
     // Quản lý Lịch hẹn & Tiếp nhận
     Route::get('/appointments', [LichHenController::class, 'index'])->name('appointments');
@@ -187,10 +188,10 @@ Route::prefix('cls')->name('cls.')->middleware(['auth', 'role:NHAN_VIEN_CAN_LAM_
     Route::get('/pending', [CanLamSangController::class, 'pending'])->name('pending');
     Route::get('/processing', [CanLamSangController::class, 'processing'])->name('processing');
     Route::get('/results', [CanLamSangController::class, 'results'])->name('results');
-    Route::post('/requests/{id}/receive', [CanLamSangController::class, 'receive'])->name('requests.receive');
-    Route::post('/requests/{id}/start', [CanLamSangController::class, 'start'])->name('requests.start');
-    Route::post('/requests/{id}/result', [CanLamSangController::class, 'updateResult'])->name('requests.result');
-    Route::post('/requests/{id}/cancel', [CanLamSangController::class, 'cancel'])->name('requests.cancel');
+    Route::post('/requests/{id}/receive', [CanLamSangController::class, 'receive'])->name('requests.receive')->middleware('staff.checked_in');
+    Route::post('/requests/{id}/start', [CanLamSangController::class, 'start'])->name('requests.start')->middleware('staff.checked_in');
+    Route::post('/requests/{id}/result', [CanLamSangController::class, 'updateResult'])->name('requests.result')->middleware('staff.checked_in');
+    Route::post('/requests/{id}/cancel', [CanLamSangController::class, 'cancel'])->name('requests.cancel')->middleware('staff.checked_in');
 
     // Chấm công & Bảng lương Cận lâm sàng
     Route::get('/attendance', [ChamCongController::class, 'staffAttendancePage'])->name('attendance');
@@ -210,6 +211,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:QUAN_TRI_VIEN'
     Route::post('/doctors', [BacSiController::class, 'store'])->name('doctors.store');
     Route::put('/doctors/{id}', [BacSiController::class, 'update'])->name('doctors.update');
     Route::delete('/doctors/{id}', [BacSiController::class, 'destroy'])->name('doctors.destroy');
+
+    // Quản lý Nhân sự (Lễ tân, Cận lâm sàng, Nhân viên khác)
+    Route::get('/staffs', [NhanVienController::class, 'index'])->name('staffs');
+    Route::post('/staffs', [NhanVienController::class, 'store'])->name('staffs.store');
+    Route::put('/staffs/{id}', [NhanVienController::class, 'update'])->name('staffs.update');
+    Route::post('/staffs/{id}/toggle', [NhanVienController::class, 'toggleStatus'])->name('staffs.toggle');
+    Route::post('/staffs/{id}/account', [NhanVienController::class, 'createAccount'])->name('staffs.account');
 
     // Quản lý Tài khoản người dùng
     Route::get('/users', [AdminController::class, 'usersIndex'])->name('users');

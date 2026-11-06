@@ -69,6 +69,12 @@ export default function BookAppointment({
     const [caKhams, setCaKhams] = useState<CaKhamSlot[]>([]);
     const [selectedCaKham, setSelectedCaKham] = useState<CaKhamSlot | null>(null);
     const [reason, setReason] = useState<string>('');
+
+    // BHYT state
+    const patientBhyt = auth?.user?.benh_nhan?.SoTheBHYT || '';
+    const [useBhyt, setUseBhyt] = useState<boolean>(Boolean(patientBhyt));
+    const [soTheBHYT, setSoTheBHYT] = useState<string>(patientBhyt);
+    const [mucHuongBHYT, setMucHuongBHYT] = useState<number>(auth?.user?.benh_nhan?.MucHuongBHYT || 80);
     
     const [loadingSlots, setLoadingSlots] = useState<boolean>(false);
     const [submitting, setSubmitting] = useState<boolean>(false);
@@ -149,6 +155,9 @@ export default function BookAppointment({
             const res = await axios.post('/appointments', {
                 MaCaKham: selectedCaKham.MaCaKham,
                 LyDoKham: reason.trim() || 'Khám bệnh theo yêu cầu',
+                CoBHYT: useBhyt,
+                SoTheBHYT: useBhyt && soTheBHYT ? soTheBHYT.trim().toUpperCase() : null,
+                MucHuongBHYT: useBhyt ? mucHuongBHYT : 0,
             }, {
                 headers: {
                     'Content-Type': 'application/json',
@@ -432,7 +441,77 @@ export default function BookAppointment({
                             </div>
                         </div>
 
-                        {/* Bước 4: Tóm tắt & Nút xác nhận */}
+                        {/* Bước 4: Thông tin Bảo hiểm Y tế (BHYT) */}
+                        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h2 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                                    <span className="w-6 h-6 rounded-full bg-teal-600 text-white flex items-center justify-center text-xs font-bold">4</span>
+                                    Thông tin Bảo hiểm Y tế (BHYT)
+                                </h2>
+                                <label className="inline-flex items-center gap-2 cursor-pointer text-sm font-semibold text-teal-700 bg-teal-50 px-3 py-1.5 rounded-xl border border-teal-200 hover:bg-teal-100 transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        checked={useBhyt}
+                                        onChange={(e) => setUseBhyt(e.target.checked)}
+                                        className="w-4 h-4 text-teal-600 rounded focus:ring-teal-500 border-slate-300"
+                                    />
+                                    <span>Áp dụng BHYT cho ca khám này</span>
+                                </label>
+                            </div>
+
+                            {useBhyt ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 animate-in fade-in duration-200">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-600 uppercase mb-1.5">
+                                            Số thẻ BHYT (15 ký tự) <span className="text-rose-500">*</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            maxLength={15}
+                                            value={soTheBHYT}
+                                            onChange={(e) => {
+                                                const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                                                setSoTheBHYT(val);
+                                                if (val.startsWith('CC') || val.startsWith('TE')) {
+                                                    setMucHuongBHYT(100);
+                                                } else if (val.startsWith('HT') || val.startsWith('TC') || val.startsWith('CN')) {
+                                                    setMucHuongBHYT(95);
+                                                } else {
+                                                    setMucHuongBHYT(80);
+                                                }
+                                            }}
+                                            placeholder="Ví dụ: DN4010123456789"
+                                            className="w-full px-4 py-2.5 rounded-xl border border-slate-300 font-mono font-bold text-sm tracking-wide focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:outline-none uppercase"
+                                        />
+                                        <p className="text-[11px] text-slate-400 mt-1">Chuẩn 15 ký tự: 2 chữ cái đầu + 13 chữ số</p>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-600 uppercase mb-1.5">
+                                            Mức hưởng BHYT dự kiến
+                                        </label>
+                                        <select
+                                            value={mucHuongBHYT}
+                                            onChange={(e) => setMucHuongBHYT(Number(e.target.value))}
+                                            className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:outline-none bg-white font-semibold text-teal-800"
+                                        >
+                                            <option value={80}>Hưởng 80% (Người lao động, BH tự nguyện chuẩn)</option>
+                                            <option value={95}>Hưởng 95% (Hộ cận nghèo, bảo trợ xã hội)</option>
+                                            <option value={100}>Hưởng 100% (Trẻ em &lt; 6 tuổi, sĩ quan, người có công)</option>
+                                        </select>
+                                        <p className="text-[11px] text-emerald-600 font-medium mt-1">
+                                            Bệnh viện/phòng khám sẽ đối chiếu thẻ thật và CCCD khi tiếp nhận tại quầy.
+                                        </p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-xs text-slate-500 italic bg-slate-50 p-3 rounded-xl border border-dashed border-slate-200">
+                                    Không áp dụng BHYT. Viện phí sẽ tính theo đơn giá khám dịch vụ tự túc thông thường.
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Bước 5: Tóm tắt & Nút xác nhận */}
                         <div className="p-6 bg-teal-900 rounded-3xl text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                             <div>
                                 <p className="text-xs text-teal-300 uppercase font-semibold">Tóm tắt lịch hẹn</p>

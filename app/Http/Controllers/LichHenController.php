@@ -148,6 +148,9 @@ class LichHenController extends Controller
         $validated = $request->validate([
             'MaCaKham' => ['required', 'exists:ca_kham,MaCaKham'],
             'LyDoKham' => ['nullable', 'string', 'max:1000'],
+            'CoBHYT' => ['nullable', 'boolean'],
+            'SoTheBHYT' => ['nullable', 'string', 'max:15'],
+            'MucHuongBHYT' => ['nullable', 'integer', 'in:0,80,95,100'],
         ], [
             'MaCaKham.required' => 'Vui lòng chọn ca khám.',
             'MaCaKham.exists' => 'Ca khám không tồn tại.',
@@ -155,6 +158,17 @@ class LichHenController extends Controller
 
         $maCaKham = (int) $validated['MaCaKham'];
         $lyDoKham = $validated['LyDoKham'] ?? 'Khám bệnh';
+
+        // Cập nhật thông tin BHYT cho bệnh nhân nếu có cung cấp khi đặt lịch
+        if (!empty($validated['SoTheBHYT'])) {
+            $bnRecord = BenhNhan::find($maBenhNhan);
+            if ($bnRecord) {
+                $bnRecord->update([
+                    'SoTheBHYT' => strtoupper(trim($validated['SoTheBHYT'])),
+                    'MucHuongBHYT' => (int) ($validated['MucHuongBHYT'] ?? 80),
+                ]);
+            }
+        }
 
         // 3. Kiểm tra bệnh nhân không được đặt trùng ca khám này nếu đã có lịch đang chờ/xác nhận
         $daDatTrung = LichHen::where('MaBenhNhan', $maBenhNhan)

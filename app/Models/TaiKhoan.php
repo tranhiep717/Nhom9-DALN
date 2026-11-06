@@ -39,6 +39,7 @@ class TaiKhoan extends Authenticatable
     {
         return $this->benhNhan?->HoTen 
             ?? $this->bacSi?->HoTen 
+            ?? $this->nhanVien?->HoTen 
             ?? $this->TenDangNhap 
             ?? 'Người dùng';
     }
@@ -118,6 +119,12 @@ class TaiKhoan extends Authenticatable
     public function bacSi()
     {
         return $this->hasOne(BacSi::class, 'MaTaiKhoan', 'MaTaiKhoan');
+    }
+
+    // Quan hệ: TaiKhoan có một NhanVien (Lễ tân, Cận lâm sàng...)
+    public function nhanVien()
+    {
+        return $this->hasOne(NhanVien::class, 'MaTaiKhoan', 'MaTaiKhoan');
     }
 
     /**

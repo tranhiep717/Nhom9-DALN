@@ -58,7 +58,16 @@ class LuotKhamController extends Controller
             if (!$maBacSi) {
                 return response()->json(['success' => false, 'message' => 'Tài khoản chưa liên kết hồ sơ Bác sĩ.'], 403);
             }
-            $query->where('MaBacSi', $maBacSi);
+            $maChuyenKhoaBS = $user->bacSi?->MaChuyenKhoa;
+            $query->where(function ($q) use ($maBacSi, $maChuyenKhoaBS) {
+                $q->where('MaBacSi', $maBacSi);
+                if ($maChuyenKhoaBS) {
+                    // Xem thêm các lượt khám thuộc cùng chuyên khoa chưa được gán bác sĩ cụ thể
+                    $q->orWhere(function ($sub) use ($maChuyenKhoaBS) {
+                        $sub->whereNull('MaBacSi')->where('MaChuyenKhoa', $maChuyenKhoaBS);
+                    });
+                }
+            });
         } elseif ($user && $user->isBenhNhan()) {
             $maBenhNhan = $user->benhNhan?->MaBenhNhan;
             if (!$maBenhNhan) {
@@ -227,20 +236,37 @@ class LuotKhamController extends Controller
             ->orderBy('TenDichVu', 'asc')
             ->get(['MaDichVu', 'TenDichVu', 'DonGia', 'MoTa']);
 
-        // Thống kê hôm nay của Bác sĩ (chuẩn hóa đồng bộ với Dashboard)
+        // Thống kê đồng bộ chính xác với bộ lọc ngày và ca khám của Bác sĩ
         $today = now()->toDateString();
-        $dateFilter = function ($q) use ($today) {
-            $q->where(function ($sub) use ($today) {
-                $sub->whereDate('NgayKham', $today)
-                    ->orWhere(function ($s) use ($today) {
-                        $s->whereNull('NgayKham')->whereDate('ThoiGianTiepNhan', $today);
+        $statDate = ($effectiveDate && $effectiveDate !== 'all') ? $effectiveDate : $today;
+        $dateFilter = function ($q) use ($statDate, $effectiveDate) {
+            if ($effectiveDate === 'all') {
+                return;
+            }
+            $q->where(function ($sub) use ($statDate) {
+                $sub->whereDate('NgayKham', $statDate)
+                    ->orWhere(function ($s) use ($statDate) {
+                        $s->whereNull('NgayKham')->whereDate('ThoiGianTiepNhan', $statDate);
                     });
             });
         };
 
         $baseDoctorQuery = LuotKham::query();
         if ($user && $user->isBacSi() && $user->bacSi?->MaBacSi) {
-            $baseDoctorQuery->where('MaBacSi', $user->bacSi->MaBacSi);
+            $maBacSi = $user->bacSi->MaBacSi;
+            $maChuyenKhoaBS = $user->bacSi?->MaChuyenKhoa;
+            $baseDoctorQuery->where(function ($q) use ($maBacSi, $maChuyenKhoaBS) {
+                $q->where('MaBacSi', $maBacSi);
+                if ($maChuyenKhoaBS) {
+                    $q->orWhere(function ($sub) use ($maChuyenKhoaBS) {
+                        $sub->whereNull('MaBacSi')->where('MaChuyenKhoa', $maChuyenKhoaBS);
+                    });
+                }
+            });
+        }
+
+        if ($shiftId) {
+            $baseDoctorQuery->where('MaCaKham', $shiftId);
         }
 
         $stats = [
@@ -249,16 +275,16 @@ class LuotKhamController extends Controller
             'waitingInitial' => (clone $baseDoctorQuery)->tap($dateFilter)->where('TrangThai', 'CHO_KHAM')->count(),
             'waitingReExam' => (clone $baseDoctorQuery)->tap($dateFilter)->where('TrangThai', 'CHO_KHAM_LAI')->count(),
             'waitingCls' => (clone $baseDoctorQuery)->tap($dateFilter)->where('TrangThai', 'CHO_KET_QUA')->count(),
-            'examining' => (clone $baseDoctorQuery)->where('TrangThai', 'DANG_KHAM')->count(),
+            'examining' => (clone $baseDoctorQuery)->tap($dateFilter)->where('TrangThai', 'DANG_KHAM')->count(),
             'completed' => (clone $baseDoctorQuery)->tap($dateFilter)->where('TrangThai', 'HOAN_THANH')->count(),
         ];
 
-        // Danh sách các ca khám hôm nay của Bác sĩ
+        // Danh sách các ca khám theo ngày đang chọn của Bác sĩ
         $doctorShifts = collect();
         if ($user && $user->isBacSi() && $user->bacSi?->MaBacSi) {
             $maBacSi = $user->bacSi->MaBacSi;
-            $doctorShifts = CaKham::whereHas('lichLamViec', function ($q) use ($maBacSi, $today) {
-                $q->where('MaBacSi', $maBacSi)->whereDate('NgayLamViec', $today);
+            $doctorShifts = CaKham::whereHas('lichLamViec', function ($q) use ($maBacSi, $statDate) {
+                $q->where('MaBacSi', $maBacSi)->whereDate('NgayLamViec', $statDate);
             })->with('lichLamViec')->orderBy('GioBatDau', 'asc')->get();
         }
 
@@ -418,6 +444,14 @@ class LuotKhamController extends Controller
                 'MucHuongBHYT' => $coBhyt ? $mucHuong : 0,
                 'TuyenKCB' => $coBhyt ? $tuyenKcb : 'KHONG_BHYT',
             ]);
+
+            // Cập nhật thẻ BHYT vào hồ sơ gốc của bệnh nhân nếu lễ tân nhập bổ sung
+            if ($coBhyt && !empty($soThe) && $bn) {
+                $bn->update([
+                    'SoTheBHYT' => $soThe,
+                    'MucHuongBHYT' => $mucHuong,
+                ]);
+            }
 
             // Cập nhật lại vào hồ sơ bệnh nhân nếu có cung cấp số thẻ mới
             if ($coBhyt && $soThe && $bn && (empty($bn->SoTheBHYT) || $bn->SoTheBHYT !== $soThe || $bn->MucHuongBHYT !== $mucHuong)) {

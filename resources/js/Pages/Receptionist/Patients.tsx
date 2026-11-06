@@ -562,6 +562,19 @@ export default function ReceptionistPatients({ auth, patients, filters }: Patien
                                             <span className="text-xs text-gray-500">Địa chỉ thường trú:</span>
                                             <p className="text-sm text-gray-800 mt-0.5">{selectedPatient.DiaChi || 'Chưa cập nhật'}</p>
                                         </div>
+                                        <div className="sm:col-span-2 pt-2 border-t border-gray-200/60 flex items-center justify-between">
+                                            <div>
+                                                <span className="text-xs text-gray-500">Thẻ Bảo hiểm Y tế (BHYT):</span>
+                                                <p className="text-sm font-mono font-bold text-teal-800 mt-0.5">
+                                                    {(selectedPatient as any).SoTheBHYT || (selectedPatient as any).so_the_bhyt || 'Chưa đăng ký BHYT'}
+                                                </p>
+                                            </div>
+                                            {Boolean((selectedPatient as any).SoTheBHYT || (selectedPatient as any).so_the_bhyt) && (
+                                                <span className="text-xs px-2.5 py-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg font-bold">
+                                                    Mức hưởng: {(selectedPatient as any).MucHuongBHYT || 80}%
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
 

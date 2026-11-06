@@ -37,6 +37,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'role' => \App\Http\Middleware\CheckRole::class,
+            'staff.checked_in' => \App\Http\Middleware\EnsureStaffCheckedIn::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

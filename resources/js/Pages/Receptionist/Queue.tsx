@@ -303,6 +303,15 @@ export default function Queue({
         TuyenKCB: 'DUNG_TUYEN',
     });
 
+    // Modal tiếp nhận lịch hẹn online và bổ sung BHYT tại quầy
+    const [intakeModalAppointment, setIntakeModalAppointment] = useState<Appointment | null>(null);
+    const [intakeBhytForm, setIntakeBhytForm] = useState({
+        CoBHYT: false,
+        SoTheBHYT: '',
+        MucHuongBHYT: 80,
+        TuyenKCB: 'DUNG_TUYEN',
+    });
+
     const handleSelectPatient = (p: Patient | null) => {
         setSelectedPatient(p);
         if (p) {
@@ -474,25 +483,41 @@ export default function Queue({
         return () => clearInterval(interval);
     }, [showWalkInModal, processingId]);
 
-    // Tiếp nhận bệnh nhân có lịch hẹn (P2)
-    const handleCheckIn = (appointment: Appointment) => {
-        if (!confirm(`Xác nhận bệnh nhân ${appointment.benh_nhan.HoTen} đã đến phòng khám và cấp số thứ tự P2 vào hàng đợi chung?`)) {
-            return;
-        }
+    // Mở Modal tiếp nhận bệnh nhân có lịch hẹn (P2) để kiểm tra & cập nhật BHYT
+    const handleOpenIntakeModal = (appointment: Appointment) => {
+        const bn = appointment.benh_nhan;
+        const hasBhyt = Boolean(bn?.SoTheBHYT || (bn as any)?.so_the_bhyt);
+        setIntakeBhytForm({
+            CoBHYT: hasBhyt,
+            SoTheBHYT: bn?.SoTheBHYT || (bn as any)?.so_the_bhyt || '',
+            MucHuongBHYT: Number(bn?.MucHuongBHYT || (bn as any)?.muc_huong_bhyt || 80),
+            TuyenKCB: 'DUNG_TUYEN',
+        });
+        setIntakeModalAppointment(appointment);
+    };
 
-        setProcessingId(appointment.MaLichHen);
+    // Xác nhận tiếp nhận lịch hẹn vào hàng đợi P2
+    const handleConfirmAppointmentIntake = () => {
+        if (!intakeModalAppointment) return;
+
+        setProcessingId(intakeModalAppointment.MaLichHen);
         setNotification(null);
 
         router.post('/receptionist/visits', {
-            MaLichHen: appointment.MaLichHen,
+            MaLichHen: intakeModalAppointment.MaLichHen,
+            CoBHYT: intakeBhytForm.CoBHYT,
+            SoTheBHYT: intakeBhytForm.CoBHYT ? (intakeBhytForm.SoTheBHYT ? intakeBhytForm.SoTheBHYT.trim().toUpperCase() : null) : null,
+            MucHuongBHYT: intakeBhytForm.CoBHYT ? Number(intakeBhytForm.MucHuongBHYT || 80) : 0,
+            TuyenKCB: intakeBhytForm.CoBHYT ? intakeBhytForm.TuyenKCB : 'KHONG_BHYT',
         }, {
             preserveScroll: true,
             onSuccess: () => {
                 setNotification({
                     type: 'success',
-                    message: `Tiếp nhận thành công bệnh nhân ${appointment.benh_nhan.HoTen}. Đã cấp số phiếu P2 vào hàng đợi SmartCare Hybrid Queue.`,
+                    message: `Tiếp nhận thành công bệnh nhân ${intakeModalAppointment.benh_nhan.HoTen}. Đã cấp số phiếu P2 vào hàng đợi chung.`,
                 });
                 setProcessingId(null);
+                setIntakeModalAppointment(null);
                 setActiveTab('hybrid_queue');
             },
             onError: (errors: any) => {
@@ -1448,9 +1473,9 @@ export default function Queue({
                                                         {canCheckIn ? (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => handleCheckIn(app)}
+                                                                onClick={() => handleOpenIntakeModal(app)}
                                                                 disabled={isProcessing}
-                                                                className="px-3.5 py-1.5 bg-primary hover:bg-primary-hover disabled:bg-slate-300 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-1.5 mx-auto"
+                                                                className="px-3.5 py-1.5 bg-primary hover:bg-primary-hover disabled:bg-slate-300 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-1.5 mx-auto cursor-pointer"
                                                             >
                                                                 {isProcessing ? (
                                                                     <>
@@ -1955,6 +1980,169 @@ export default function Queue({
                                     </button>
                                 </div>
                             </form>
+                        </div>
+                    </div>
+                )}
+                {/* Modal tiếp nhận lịch hẹn Online & Bổ sung BHYT tại quầy */}
+                {intakeModalAppointment && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+                        <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150">
+                            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                                <div>
+                                    <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                                        <UserCheck className="w-5 h-5 text-primary" />
+                                        Tiếp nhận Lịch hẹn & Xác minh BHYT
+                                    </h3>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        Xác nhận bệnh nhân đã có mặt tại quầy và cấp số thứ tự P2 vào hàng đợi chung
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setIntakeModalAppointment(null)}
+                                    className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            <div className="my-4 p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-1.5 text-xs">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-slate-500 font-medium">Bệnh nhân:</span>
+                                    <strong className="text-sm font-bold text-slate-900">
+                                        {intakeModalAppointment.benh_nhan.HoTen}
+                                    </strong>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-slate-500">Số điện thoại:</span>
+                                    <span className="font-mono font-semibold text-slate-700">
+                                        {intakeModalAppointment.benh_nhan.SoDienThoai || '---'}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-slate-500">Bác sĩ khám:</span>
+                                    <span className="font-semibold text-slate-800">
+                                        {intakeModalAppointment.ca_kham?.lich_lam_viec?.bac_si?.HoTen || 'Bác sĩ chuyên khoa'}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-slate-500">Khung giờ:</span>
+                                    <span className="font-mono text-slate-700 font-bold">
+                                        {intakeModalAppointment.ca_kham?.GioBatDau?.slice(0, 5)} - {intakeModalAppointment.ca_kham?.GioKetThuc?.slice(0, 5)}
+                                    </span>
+                                </div>
+                                {intakeModalAppointment.LyDoKham && (
+                                    <div className="pt-1 border-t border-blue-200/60 text-slate-600">
+                                        Lý do khám: <em>"{intakeModalAppointment.LyDoKham}"</em>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Form BHYT */}
+                            <div className="space-y-3.5 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={intakeBhytForm.CoBHYT}
+                                            onChange={(e) => setIntakeBhytForm(prev => ({ ...prev, CoBHYT: e.target.checked }))}
+                                            className="w-4 h-4 text-primary rounded border-slate-300 focus:ring-primary"
+                                        />
+                                        <span>Áp dụng Bảo hiểm Y tế (BHYT)</span>
+                                    </label>
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${intakeBhytForm.CoBHYT ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>
+                                        {intakeBhytForm.CoBHYT ? 'BHYT Đúng quy chuẩn' : 'Khám tự túc'}
+                                    </span>
+                                </div>
+
+                                {intakeBhytForm.CoBHYT && (
+                                    <div className="space-y-3 pt-2 border-t border-slate-200 animate-in fade-in duration-150">
+                                        <div>
+                                            <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                                                Số thẻ BHYT (15 ký tự)
+                                            </label>
+                                            <input
+                                                type="text"
+                                                maxLength={15}
+                                                value={intakeBhytForm.SoTheBHYT}
+                                                onChange={(e) => {
+                                                    const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                                                    let rate = intakeBhytForm.MucHuongBHYT;
+                                                    if (val.startsWith('CC') || val.startsWith('TE')) rate = 100;
+                                                    else if (val.startsWith('HT') || val.startsWith('TC') || val.startsWith('CN')) rate = 95;
+                                                    else rate = 80;
+
+                                                    setIntakeBhytForm(prev => ({
+                                                        ...prev,
+                                                        SoTheBHYT: val,
+                                                        MucHuongBHYT: rate,
+                                                    }));
+                                                }}
+                                                placeholder="VD: DN4010123456789"
+                                                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 font-mono font-bold uppercase focus:ring-2 focus:ring-primary focus:border-primary focus:outline-none"
+                                            />
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-2.5">
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                                                    Mức hưởng
+                                                </label>
+                                                <select
+                                                    value={intakeBhytForm.MucHuongBHYT}
+                                                    onChange={(e) => setIntakeBhytForm(prev => ({ ...prev, MucHuongBHYT: Number(e.target.value) }))}
+                                                    className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 bg-white font-semibold text-slate-800 focus:outline-none"
+                                                >
+                                                    <option value={80}>80% (Chuẩn)</option>
+                                                    <option value={95}>95% (Cận nghèo)</option>
+                                                    <option value={100}>100% (Đặc cách)</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                                                    Tuyến KCB
+                                                </label>
+                                                <select
+                                                    value={intakeBhytForm.TuyenKCB}
+                                                    onChange={(e) => setIntakeBhytForm(prev => ({ ...prev, TuyenKCB: e.target.value }))}
+                                                    className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 bg-white font-semibold text-slate-800 focus:outline-none"
+                                                >
+                                                    <option value="DUNG_TUYEN">Đúng tuyến</option>
+                                                    <option value="TRAI_TUYEN">Trái tuyến</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="mt-5 flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    onClick={() => setIntakeModalAppointment(null)}
+                                    className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
+                                >
+                                    Đóng
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleConfirmAppointmentIntake}
+                                    disabled={processingId === intakeModalAppointment.MaLichHen}
+                                    className="px-5 py-2.5 bg-primary hover:bg-primary-hover disabled:bg-slate-300 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                                >
+                                    {processingId === intakeModalAppointment.MaLichHen ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            Đang tiếp nhận...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <UserCheck className="w-4 h-4" />
+                                            Xác nhận đến & Cấp số phiếu P2
+                                        </>
+                                    )}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}

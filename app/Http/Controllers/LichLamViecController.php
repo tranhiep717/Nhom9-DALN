@@ -21,10 +21,11 @@ class LichLamViecController extends Controller
     {
         $user = $request->user();
         $query = LichLamViec::query()->with([
-            'bacSi:MaBacSi,HoTen,HocVi,MaChuyenKhoa',
+            'bacSi:MaBacSi,MaTaiKhoan,HoTen,HocVi,MaChuyenKhoa,SoDienThoai,EmailLienHe,KinhNghiem,MoTa',
             'bacSi.chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa',
             'taiKhoan:MaTaiKhoan,TenDangNhap,Email,MaVaiTro',
             'taiKhoan.vaiTro:MaVaiTro,TenVaiTro',
+            'taiKhoan.nhanVien:MaNhanVien,MaTaiKhoan,HoTen,LoaiNhanVien,SoDienThoai',
             'caKhams'
         ]);
 
@@ -151,7 +152,14 @@ class LichLamViecController extends Controller
     public function show(Request $request, int $id): JsonResponse
     {
         $user = $request->user();
-        $schedule = LichLamViec::with(['bacSi:MaBacSi,HoTen,HocVi,MaChuyenKhoa', 'caKhams'])->find($id);
+        $schedule = LichLamViec::with([
+            'bacSi:MaBacSi,MaTaiKhoan,HoTen,HocVi,MaChuyenKhoa,SoDienThoai,EmailLienHe,KinhNghiem,MoTa',
+            'bacSi.chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa',
+            'taiKhoan:MaTaiKhoan,TenDangNhap,Email,MaVaiTro',
+            'taiKhoan.vaiTro:MaVaiTro,TenVaiTro',
+            'taiKhoan.nhanVien:MaNhanVien,MaTaiKhoan,HoTen,LoaiNhanVien,SoDienThoai',
+            'caKhams'
+        ])->find($id);
 
         if (!$schedule) {
             return response()->json(['success' => false, 'message' => 'Không tìm thấy lịch làm việc.'], 404);
@@ -268,7 +276,14 @@ class LichLamViecController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Tạo lịch làm việc thành công.',
-            'data' => $schedule->load(['bacSi:MaBacSi,HoTen', 'taiKhoan:MaTaiKhoan,TenDangNhap,Email']),
+            'data' => $schedule->load([
+                'bacSi:MaBacSi,MaTaiKhoan,HoTen,HocVi,MaChuyenKhoa,SoDienThoai,EmailLienHe,KinhNghiem,MoTa',
+                'bacSi.chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa',
+                'taiKhoan:MaTaiKhoan,TenDangNhap,Email,MaVaiTro',
+                'taiKhoan.vaiTro:MaVaiTro,TenVaiTro',
+                'taiKhoan.nhanVien:MaNhanVien,MaTaiKhoan,HoTen,LoaiNhanVien,SoDienThoai',
+                'caKhams'
+            ]),
         ], 201);
     }
 

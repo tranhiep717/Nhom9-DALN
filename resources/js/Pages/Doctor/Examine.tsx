@@ -377,6 +377,16 @@ export default function DoctorExamine({
         activeVisit?.phieuKham?.GhiChu
     ]);
 
+    // Tự động làm mới danh sách hàng chờ mỗi 30 giây để cập nhật bệnh nhân lễ tân vừa tiếp nhận
+    React.useEffect(() => {
+        const timer = setInterval(() => {
+            router.reload({
+                only: ['visits', 'stats'],
+            });
+        }, 30000);
+        return () => clearInterval(timer);
+    }, []);
+
     // UI Loading & Action States
     const [loadingAction, setLoadingAction] = useState<string | null>(null);
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -1119,8 +1129,21 @@ export default function DoctorExamine({
                         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                             <div className="p-3.5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
                                 <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                                    <Clock className="w-4 h-4 text-primary" /> Hàng chờ bệnh nhân ({pagination.total})
+                                    <Clock className="w-4 h-4 text-primary" />
+                                    <span>Danh sách bệnh nhân</span>
+                                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
+                                        {stats.waiting ?? 0} đang chờ
+                                    </span>
                                 </h3>
+                                <button
+                                    type="button"
+                                    onClick={() => router.reload({ only: ['visits', 'stats'] })}
+                                    className="p-1.5 hover:bg-white rounded-lg text-slate-500 hover:text-primary transition-colors text-xs font-semibold flex items-center gap-1 border border-slate-200 cursor-pointer shadow-2xs"
+                                    title="Làm mới hàng chờ thời gian thực"
+                                >
+                                    <RefreshCw className="w-3.5 h-3.5" />
+                                    <span>Làm mới</span>
+                                </button>
                             </div>
 
                             <div className="divide-y divide-gray-100 max-h-[340px] overflow-y-auto">

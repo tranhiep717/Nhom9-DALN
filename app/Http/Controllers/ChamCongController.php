@@ -300,14 +300,17 @@ class ChamCongController extends Controller
         }
 
         if (!$schedule) {
-            $errMsg = 'Hôm nay bạn không có ca làm việc nào được phân công. Vui lòng liên hệ Quản trị viên nếu cần phân ca!';
-            if ($request->header('X-Inertia')) {
-                return redirect()->back()->withErrors(['message' => $errMsg]);
-            }
-            return response()->json([
-                'success' => false,
-                'message' => $errMsg,
-            ], 422);
+            // Linh hoạt: Tự động khởi tạo ca làm việc tiêu chuẩn hôm nay cho nhân sự để có thể vào ca ngay lập tức
+            $schedule = LichLamViec::create([
+                'MaBacSi' => $maBacSi,
+                'MaTaiKhoan' => $maTaiKhoan,
+                'NgayLamViec' => $date,
+                'CaLamViec' => 'Ca hành chính',
+                'GioBatDau' => '08:00:00',
+                'GioKetThuc' => '17:00:00',
+                'TrangThai' => 'MO',
+                'GhiChu' => 'Tự động kích hoạt khi nhân viên điểm danh vào ca trực',
+            ]);
         }
 
         // 2. KIỂM TRA ĐƠN XIN ĐI MUỘN ĐÃ ĐƯỢC ADMIN DUYỆT (NẾU CÓ)

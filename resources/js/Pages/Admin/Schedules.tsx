@@ -13,7 +13,13 @@ import {
     Users, 
     Trash2,
     CalendarPlus,
-    Loader2
+    Loader2,
+    Phone,
+    Mail,
+    Award,
+    Eye,
+    Info,
+    ExternalLink
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import axios from 'axios';
@@ -21,9 +27,19 @@ import { adminNavItems } from '@/constants/navigation';
 
 interface DoctorBrief {
     MaBacSi: number;
+    MaTaiKhoan?: number;
     HoTen: string;
     HocVi?: string;
+    SoDienThoai?: string;
+    EmailLienHe?: string;
+    KinhNghiem?: number;
+    MoTa?: string;
     chuyenKhoa?: {
+        MaChuyenKhoa?: number;
+        TenChuyenKhoa: string;
+    };
+    chuyen_khoa?: {
+        MaChuyenKhoa?: number;
         TenChuyenKhoa: string;
     };
 }
@@ -45,8 +61,10 @@ interface ScheduleItem {
     GioBatDau: string;
     GioKetThuc: string;
     LoaiCa?: string;
-    TrangThai: string; // 'MO', 'DONG'
+    TrangThai: string; // 'MO', 'DONG', 'CON_TRONG'
+    SoLuongTiepNhan?: number;
     bacSi?: DoctorBrief;
+    bac_si?: DoctorBrief;
     taiKhoan?: {
         MaTaiKhoan: number;
         TenDangNhap: string;
@@ -57,8 +75,16 @@ interface ScheduleItem {
             MaVaiTro: number;
             TenVaiTro: string;
         };
+        vai_tro?: {
+            MaVaiTro: number;
+            TenVaiTro: string;
+        };
+        nhanVien?: any;
+        nhan_vien?: any;
     };
+    tai_khoan?: any;
     caKhams?: CaKhamItem[];
+    ca_khams?: CaKhamItem[];
 }
 
 interface StaffMember {
@@ -128,6 +154,50 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
     const [caModalOpen, setCaModalOpen] = useState(false);
     const [selectedScheduleForCa, setSelectedScheduleForCa] = useState<ScheduleItem | null>(null);
 
+    // Modal xem chi tiết bác sĩ & ca trực
+    const [viewingSchedule, setViewingSchedule] = useState<ScheduleItem | null>(null);
+
+    // Helpers trích xuất quan hệ (hỗ trợ cả camelCase và snake_case từ Laravel)
+    const getDoctor = (sch?: ScheduleItem | null): DoctorBrief | undefined => {
+        if (!sch) return undefined;
+        return sch.bacSi || (sch as any).bac_si;
+    };
+
+    const getStaff = (sch?: ScheduleItem | null) => {
+        if (!sch) return undefined;
+        return sch.taiKhoan || (sch as any).tai_khoan;
+    };
+
+    const getCaKhams = (sch?: ScheduleItem | null): CaKhamItem[] => {
+        if (!sch) return [];
+        return sch.caKhams || (sch as any).ca_khams || [];
+    };
+
+    const getDoctorSpec = (doc?: DoctorBrief | null): string => {
+        if (!doc) return 'Đa khoa';
+        return doc.chuyenKhoa?.TenChuyenKhoa || doc.chuyen_khoa?.TenChuyenKhoa || 'Đa khoa';
+    };
+
+    const getDoctorDisplayName = (doc?: DoctorBrief | null): string => {
+        if (!doc?.HoTen) return 'Bác sĩ';
+        const raw = doc.HoTen.trim();
+        if (/^(BS|ThS|PGS|TS|Bác sĩ|GS)/i.test(raw)) {
+            return raw;
+        }
+        const prefix = doc.HocVi ? `${doc.HocVi}. ` : 'BS. ';
+        return `${prefix}${raw}`;
+    };
+
+    const getDoctorInitials = (doc?: DoctorBrief | null): string => {
+        if (!doc?.HoTen) return 'BS';
+        const clean = doc.HoTen.replace(/^(BS\.?|ThS\.?|PGS\.?|TS\.?|CK[12]\.?)\s*/gi, '').trim();
+        const parts = clean.split(' ').filter(Boolean);
+        if (parts.length > 0) {
+            return parts[parts.length - 1][0].toUpperCase();
+        }
+        return 'BS';
+    };
+
     // Form tạo lịch làm việc
     const fixedShiftOptions = [
         { key: 'custom', label: 'Khung tùy chỉnh', start: '', end: '', tone: 'bg-slate-100 text-slate-700', description: 'Điều chỉnh theo giờ riêng' },
@@ -172,7 +242,7 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
         }
     };
 
-    const assignmentSummary = `${selectedDoctor ? selectedDoctor.HocVi ? `${selectedDoctor.HocVi}. ` : 'BS. ' : ''}${selectedDoctor?.HoTen || 'Bác sĩ'} • ${formatDate(formData.NgayLamViec)} • ${selectedShift.label}`;
+    const assignmentSummary = `${selectedDoctor ? getDoctorDisplayName(selectedDoctor) : 'Chưa chọn bác sĩ'} • ${formatDate(formData.NgayLamViec)} • ${selectedShift.label}`;
 
     const applyFixedShift = (shiftKey: string) => {
         const selected = fixedShiftOptions.find((item) => item.key === shiftKey);
@@ -478,7 +548,7 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
                                     </option>
                                     {activeScheduleTab === 'doctor' && doctors.map((d) => (
                                         <option key={d.MaBacSi} value={d.MaBacSi}>
-                                            {d.HocVi ? `${d.HocVi}. ` : 'BS. '}{d.HoTen} ({d.chuyenKhoa?.TenChuyenKhoa || 'Đa khoa'})
+                                            {getDoctorDisplayName(d)} ({getDoctorSpec(d)})
                                         </option>
                                     ))}
                                     {activeScheduleTab === 'cls' && (staffGroups.cls || []).map((s) => (
@@ -687,36 +757,42 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
                                                             // Lọc theo vai trò tab & từ khóa
                                                             const term = searchTerm.trim().toLowerCase();
                                                             if (activeScheduleTab === 'doctor') {
-                                                                const isDoc = Boolean(sch.MaBacSi || sch.bacSi);
+                                                                const doc = getDoctor(sch);
+                                                                const isDoc = Boolean(sch.MaBacSi || doc);
                                                                 if (!isDoc) return false;
                                                                 if (term) {
-                                                                    const name = (sch.bacSi?.HoTen || '').toLowerCase();
-                                                                    const spec = (sch.bacSi?.chuyenKhoa?.TenChuyenKhoa || '').toLowerCase();
-                                                                    return name.includes(term) || spec.includes(term);
+                                                                    const name = (doc?.HoTen || '').toLowerCase();
+                                                                    const spec = getDoctorSpec(doc).toLowerCase();
+                                                                    const code = doc?.MaBacSi ? `bs${doc.MaBacSi}` : '';
+                                                                    return name.includes(term) || spec.includes(term) || code.includes(term);
                                                                 }
                                                                 return true;
                                                             }
                                                             if (activeScheduleTab === 'cls') {
+                                                                const staffAccount = getStaff(sch);
+                                                                const roleName = staffAccount?.vaiTro?.TenVaiTro || staffAccount?.vai_tro?.TenVaiTro;
                                                                 const isCls = Boolean(
-                                                                    sch.taiKhoan?.vaiTro?.TenVaiTro === 'NHAN_VIEN_CAN_LAM_SANG' ||
+                                                                    roleName === 'NHAN_VIEN_CAN_LAM_SANG' ||
                                                                     (staffGroups.cls || []).some(c => c.MaTaiKhoan === sch.MaTaiKhoan)
                                                                 );
                                                                 if (!isCls) return false;
                                                                 if (term) {
-                                                                    const staff = sch.taiKhoan || (staffGroups.cls || []).find(s => s.MaTaiKhoan === sch.MaTaiKhoan);
+                                                                    const staff = staffAccount || (staffGroups.cls || []).find(s => s.MaTaiKhoan === sch.MaTaiKhoan);
                                                                     const name = (staff?.name || staff?.TenDangNhap || staff?.HoTen || '').toLowerCase();
                                                                     return name.includes(term);
                                                                 }
                                                                 return true;
                                                             }
                                                             if (activeScheduleTab === 'reception') {
+                                                                const staffAccount = getStaff(sch);
+                                                                const roleName = staffAccount?.vaiTro?.TenVaiTro || staffAccount?.vai_tro?.TenVaiTro;
                                                                 const isRec = Boolean(
-                                                                    sch.taiKhoan?.vaiTro?.TenVaiTro === 'LE_TAN' ||
+                                                                    roleName === 'LE_TAN' ||
                                                                     (staffGroups.reception || []).some(r => r.MaTaiKhoan === sch.MaTaiKhoan)
                                                                 );
                                                                 if (!isRec) return false;
                                                                 if (term) {
-                                                                    const staff = sch.taiKhoan || (staffGroups.reception || []).find(s => s.MaTaiKhoan === sch.MaTaiKhoan);
+                                                                    const staff = staffAccount || (staffGroups.reception || []).find(s => s.MaTaiKhoan === sch.MaTaiKhoan);
                                                                     const name = (staff?.name || staff?.TenDangNhap || staff?.HoTen || '').toLowerCase();
                                                                     return name.includes(term);
                                                                 }
@@ -731,12 +807,17 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
                                                                     {items.length > 0 ? (
                                                                         items.map((sch) => {
                                                                             if (activeScheduleTab === 'doctor') {
-                                                                                const doc = sch.bacSi;
-                                                                                const initials = doc?.HoTen ? doc.HoTen.split(' ').slice(-1)[0][0] : 'BS';
+                                                                                const doc = getDoctor(sch);
+                                                                                const initials = getDoctorInitials(doc);
+                                                                                const docName = getDoctorDisplayName(doc);
+                                                                                const specName = getDoctorSpec(doc);
+                                                                                const caKhams = getCaKhams(sch);
                                                                                 return (
                                                                                     <div 
                                                                                         key={sch.MaLichLamViec} 
-                                                                                        className="group relative rounded-xl border border-indigo-200 bg-white hover:border-indigo-400 p-2.5 shadow-sm hover:shadow transition-all space-y-1.5"
+                                                                                        onClick={() => setViewingSchedule(sch)}
+                                                                                        className="group relative rounded-xl border border-indigo-200 bg-white hover:border-indigo-500 hover:shadow-md p-2.5 shadow-sm transition-all space-y-1.5 cursor-pointer"
+                                                                                        title="Nhấn để xem chi tiết Bác sĩ & Ca trực"
                                                                                     >
                                                                                         <div className="flex items-start gap-2">
                                                                                             <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-xs">
@@ -744,13 +825,13 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
                                                                                             </div>
                                                                                             <div className="min-w-0 flex-1">
                                                                                                 <div 
-                                                                                                    className="text-xs font-black text-slate-900 leading-tight truncate" 
-                                                                                                    title={`${doc?.HocVi ? `${doc.HocVi}. ` : 'BS. '}${doc?.HoTen || 'Bác sĩ'}`}
+                                                                                                    className="text-xs font-black text-slate-900 leading-tight truncate group-hover:text-indigo-600 transition-colors" 
+                                                                                                    title={docName}
                                                                                                 >
-                                                                                                    {doc?.HocVi ? `${doc.HocVi}. ` : 'BS. '}{doc?.HoTen || 'Bác sĩ'}
+                                                                                                    {docName}
                                                                                                 </div>
                                                                                                 <span className="mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded bg-indigo-50 text-[10px] font-bold text-indigo-700 border border-indigo-100">
-                                                                                                    {doc?.chuyenKhoa?.TenChuyenKhoa || 'Đa khoa'}
+                                                                                                    {specName}
                                                                                                 </span>
                                                                                             </div>
                                                                                             <span className="text-[9px] text-slate-400 font-mono">#{sch.MaLichLamViec}</span>
@@ -761,9 +842,9 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
                                                                                                 <Clock className="w-3 h-3 text-indigo-500" />
                                                                                                 {sch.GioBatDau?.slice(0, 5)} - {sch.GioKetThuc?.slice(0, 5)}
                                                                                             </span>
-                                                                                            {(sch.caKhams || []).length > 0 && (
+                                                                                            {caKhams.length > 0 && (
                                                                                                 <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-bold">
-                                                                                                    {sch.caKhams!.length} ca khám
+                                                                                                    {caKhams.length} ca khám
                                                                                                 </span>
                                                                                             )}
                                                                                         </div>
@@ -773,41 +854,56 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
                                                                                                 type="button"
                                                                                                 onClick={(e) => { 
                                                                                                     e.stopPropagation(); 
-                                                                                                    setSelectedScheduleForCa(sch);
-                                                                                                    setCaModalOpen(true);
+                                                                                                    handleOpenAddCa(sch);
                                                                                                 }}
                                                                                                 className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-0.5"
+                                                                                                title="Thêm ca khám cho bác sĩ"
                                                                                             >
                                                                                                 <Plus className="w-3 h-3" /> Ca khám
                                                                                             </button>
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                onClick={(e) => { 
-                                                                                                    e.stopPropagation(); 
-                                                                                                    handleDeleteSchedule(sch.MaLichLamViec); 
-                                                                                                }}
-                                                                                                className="text-slate-400 hover:text-rose-600 p-0.5 rounded"
-                                                                                                title="Xóa ca trực này"
-                                                                                            >
-                                                                                                <Trash2 className="w-3 h-3" />
-                                                                                            </button>
+                                                                                            <div className="flex items-center gap-1.5">
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={(e) => {
+                                                                                                        e.stopPropagation();
+                                                                                                        setViewingSchedule(sch);
+                                                                                                    }}
+                                                                                                    className="text-slate-400 hover:text-indigo-600 p-0.5 rounded"
+                                                                                                    title="Xem thông tin chi tiết Bác sĩ"
+                                                                                                >
+                                                                                                    <Eye className="w-3.5 h-3.5" />
+                                                                                                </button>
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={(e) => { 
+                                                                                                        e.stopPropagation(); 
+                                                                                                        handleDeleteSchedule(sch.MaLichLamViec); 
+                                                                                                    }}
+                                                                                                    className="text-slate-400 hover:text-rose-600 p-0.5 rounded"
+                                                                                                    title="Xóa ca trực này"
+                                                                                                >
+                                                                                                    <Trash2 className="w-3 h-3" />
+                                                                                                </button>
+                                                                                            </div>
                                                                                         </div>
                                                                                     </div>
                                                                                 );
                                                                             } else if (activeScheduleTab === 'cls') {
-                                                                                const staff = sch.taiKhoan || (staffGroups.cls || []).find(s => s.MaTaiKhoan === sch.MaTaiKhoan);
+                                                                                const staff = getStaff(sch) || (staffGroups.cls || []).find(s => s.MaTaiKhoan === sch.MaTaiKhoan);
                                                                                 const staffName = staff?.name || staff?.HoTen || staff?.TenDangNhap || 'Kỹ thuật viên';
                                                                                 return (
                                                                                     <div 
                                                                                         key={sch.MaLichLamViec} 
-                                                                                        className="group relative rounded-xl border border-sky-200 bg-white hover:border-sky-400 p-2.5 shadow-sm hover:shadow transition-all space-y-1.5"
+                                                                                        onClick={() => setViewingSchedule(sch)}
+                                                                                        className="group relative rounded-xl border border-sky-200 bg-white hover:border-sky-400 hover:shadow-md p-2.5 shadow-sm transition-all space-y-1.5 cursor-pointer"
+                                                                                        title="Nhấn để xem chi tiết ca trực"
                                                                                     >
                                                                                         <div className="flex items-start gap-2">
                                                                                             <div className="w-7 h-7 rounded-lg bg-sky-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-xs">
                                                                                                 CLS
                                                                                             </div>
                                                                                             <div className="min-w-0 flex-1">
-                                                                                                <div className="text-xs font-black text-slate-900 leading-tight truncate" title={`KTV. ${staffName}`}>
+                                                                                                <div className="text-xs font-black text-slate-900 leading-tight truncate group-hover:text-sky-600 transition-colors" title={`KTV. ${staffName}`}>
                                                                                                     KTV. {staffName}
                                                                                                 </div>
                                                                                                 <span className="mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded bg-sky-50 text-[10px] font-bold text-sky-700 border border-sky-100">
@@ -824,7 +920,18 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
                                                                                             </span>
                                                                                         </div>
 
-                                                                                        <div className="flex items-center justify-end pt-1">
+                                                                                        <div className="flex items-center justify-between pt-1">
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={(e) => {
+                                                                                                    e.stopPropagation();
+                                                                                                    setViewingSchedule(sch);
+                                                                                                }}
+                                                                                                className="text-slate-400 hover:text-sky-600 p-0.5 rounded"
+                                                                                                title="Xem chi tiết ca trực"
+                                                                                            >
+                                                                                                <Eye className="w-3.5 h-3.5" />
+                                                                                            </button>
                                                                                             <button
                                                                                                 type="button"
                                                                                                 onClick={(e) => { 
@@ -840,19 +947,21 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
                                                                                     </div>
                                                                                 );
                                                                             } else {
-                                                                                const staff = sch.taiKhoan || (staffGroups.reception || []).find(s => s.MaTaiKhoan === sch.MaTaiKhoan);
+                                                                                const staff = getStaff(sch) || (staffGroups.reception || []).find(s => s.MaTaiKhoan === sch.MaTaiKhoan);
                                                                                 const staffName = staff?.name || staff?.HoTen || staff?.TenDangNhap || 'Lễ tân';
                                                                                 return (
                                                                                     <div 
                                                                                         key={sch.MaLichLamViec} 
-                                                                                        className="group relative rounded-xl border border-amber-200 bg-white hover:border-amber-400 p-2.5 shadow-sm hover:shadow transition-all space-y-1.5"
+                                                                                        onClick={() => setViewingSchedule(sch)}
+                                                                                        className="group relative rounded-xl border border-amber-200 bg-white hover:border-amber-400 hover:shadow-md p-2.5 shadow-sm transition-all space-y-1.5 cursor-pointer"
+                                                                                        title="Nhấn để xem chi tiết ca trực"
                                                                                     >
                                                                                         <div className="flex items-start gap-2">
                                                                                             <div className="w-7 h-7 rounded-lg bg-amber-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-xs">
                                                                                                 LT
                                                                                             </div>
                                                                                             <div className="min-w-0 flex-1">
-                                                                                                <div className="text-xs font-black text-slate-900 leading-tight truncate" title={`Lễ tân. ${staffName}`}>
+                                                                                                <div className="text-xs font-black text-slate-900 leading-tight truncate group-hover:text-amber-600 transition-colors" title={`Lễ tân. ${staffName}`}>
                                                                                                     Lễ tân. {staffName}
                                                                                                 </div>
                                                                                                 <span className="mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded bg-amber-50 text-[10px] font-bold text-amber-800 border border-amber-100">
@@ -869,7 +978,18 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
                                                                                             </span>
                                                                                         </div>
 
-                                                                                        <div className="flex items-center justify-end pt-1">
+                                                                                        <div className="flex items-center justify-between pt-1">
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={(e) => {
+                                                                                                    e.stopPropagation();
+                                                                                                    setViewingSchedule(sch);
+                                                                                                }}
+                                                                                                className="text-slate-400 hover:text-amber-600 p-0.5 rounded"
+                                                                                                title="Xem chi tiết ca trực"
+                                                                                            >
+                                                                                                <Eye className="w-3.5 h-3.5" />
+                                                                                            </button>
                                                                                             <button
                                                                                                 type="button"
                                                                                                 onClick={(e) => { 
@@ -953,7 +1073,7 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
                                         >
                                             {doctors.map((d) => (
                                                 <option key={d.MaBacSi} value={d.MaBacSi}>
-                                                    {d.HocVi ? `${d.HocVi}. ` : 'BS. '}{d.HoTen}
+                                                    {getDoctorDisplayName(d)} ({getDoctorSpec(d)})
                                                 </option>
                                             ))}
                                         </select>
@@ -1069,7 +1189,7 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
                                 <div className="mt-4 space-y-3">
                                     <div className="rounded-xl bg-white border border-slate-200 p-3">
                                         <p className="text-xs text-slate-500">Bác sĩ</p>
-                                        <p className="mt-1 font-bold text-slate-900">{selectedDoctor ? `${selectedDoctor.HocVi ? `${selectedDoctor.HocVi}. ` : 'BS. '}${selectedDoctor.HoTen}` : 'Chưa chọn bác sĩ'}</p>
+                                        <p className="mt-1 font-bold text-slate-900">{selectedDoctor ? getDoctorDisplayName(selectedDoctor) : 'Chưa chọn bác sĩ'}</p>
                                     </div>
                                     <div className="rounded-xl bg-white border border-slate-200 p-3">
                                         <p className="text-xs text-slate-500">Ngày làm</p>
@@ -1110,6 +1230,264 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
                                 </div>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Xem chi tiết Bác sĩ & Ca trực */}
+            {viewingSchedule && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-md shadow-indigo-100 shrink-0">
+                                    <Stethoscope className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-slate-900">
+                                        {viewingSchedule.MaBacSi || getDoctor(viewingSchedule) ? 'Thông tin Bác sĩ & Ca trực' : 'Thông tin Nhân sự & Ca trực'}
+                                    </h3>
+                                    <p className="text-xs text-slate-400 font-mono">Lịch làm việc #{viewingSchedule.MaLichLamViec}</p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => setViewingSchedule(null)} 
+                                className="p-1 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Chi tiết cho Bác sĩ */}
+                        {(() => {
+                            const doc = getDoctor(viewingSchedule);
+                            const staff = getStaff(viewingSchedule);
+                            const caKhams = getCaKhams(viewingSchedule);
+
+                            if (viewingSchedule.MaBacSi || doc) {
+                                const specName = getDoctorSpec(doc);
+                                return (
+                                    <div className="space-y-4">
+                                        <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50/70 via-white to-indigo-50/30 border border-indigo-100 flex items-start gap-4">
+                                            <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-xl font-black shadow-md shrink-0">
+                                                {getDoctorInitials(doc)}
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <h4 className="text-base font-black text-slate-900 leading-tight">
+                                                        {getDoctorDisplayName(doc)}
+                                                    </h4>
+                                                    <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold border border-indigo-200">
+                                                        {specName}
+                                                    </span>
+                                                </div>
+                                                {doc?.HocVi && (
+                                                    <p className="text-xs font-semibold text-slate-600 mt-1">
+                                                        Học vị: <span className="text-slate-800">{doc.HocVi}</span>
+                                                    </p>
+                                                )}
+                                                {doc?.MaBacSi && (
+                                                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                                                        Mã bác sĩ: BS{String(doc.MaBacSi).padStart(3, '0')}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Thông tin liên hệ */}
+                                        <div className="grid grid-cols-2 gap-3 text-xs">
+                                            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
+                                                <span className="text-slate-400 text-[11px] font-medium flex items-center gap-1">
+                                                    <Phone className="w-3.5 h-3.5 text-slate-400" /> Điện thoại liên hệ
+                                                </span>
+                                                <p className="font-bold text-slate-800 font-mono">
+                                                    {doc?.SoDienThoai || 'Chưa cập nhật'}
+                                                </p>
+                                            </div>
+                                            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
+                                                <span className="text-slate-400 text-[11px] font-medium flex items-center gap-1">
+                                                    <Mail className="w-3.5 h-3.5 text-slate-400" /> Email liên hệ
+                                                </span>
+                                                <p className="font-bold text-slate-800 truncate" title={doc?.EmailLienHe}>
+                                                    {doc?.EmailLienHe || 'Chưa cập nhật'}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Kinh nghiệm & Giới thiệu */}
+                                        {(doc?.KinhNghiem || doc?.MoTa) && (
+                                            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1 text-xs">
+                                                <span className="text-slate-400 text-[11px] font-medium flex items-center gap-1">
+                                                    <Award className="w-3.5 h-3.5 text-indigo-500" /> Chuyên môn & Kinh nghiệm
+                                                </span>
+                                                {doc?.KinhNghiem && (
+                                                    <p className="font-semibold text-indigo-700">
+                                                        {doc.KinhNghiem} năm kinh nghiệm chẩn đoán & điều trị
+                                                    </p>
+                                                )}
+                                                {doc?.MoTa && (
+                                                    <p className="text-slate-600 leading-relaxed text-[11px] mt-0.5">
+                                                        {doc.MoTa}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Thông tin ca trực */}
+                                        <div className="p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-100 space-y-2 text-xs">
+                                            <div className="flex items-center justify-between font-bold text-slate-800">
+                                                <span className="flex items-center gap-1.5 text-indigo-900">
+                                                    <Calendar className="w-4 h-4 text-indigo-600" />
+                                                    {formatDate(viewingSchedule.NgayLamViec)}
+                                                </span>
+                                                <span className="flex items-center gap-1 font-mono text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-100">
+                                                    <Clock className="w-3.5 h-3.5 text-indigo-500" />
+                                                    {viewingSchedule.GioBatDau?.slice(0, 5)} - {viewingSchedule.GioKetThuc?.slice(0, 5)}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1.5 border-t border-indigo-100/70">
+                                                <span>Trạng thái: <strong className="text-emerald-700 font-bold">{viewingSchedule.TrangThai || 'MỞ'}</strong></span>
+                                                <span>Chỉ tiêu tiếp nhận: <strong>{viewingSchedule.SoLuongTiepNhan || 30} lượt</strong></span>
+                                            </div>
+                                        </div>
+
+                                        {/* Danh sách ca khám con */}
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                                                    Khung giờ ca khám ({caKhams.length})
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const target = viewingSchedule;
+                                                        setViewingSchedule(null);
+                                                        handleOpenAddCa(target);
+                                                    }}
+                                                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1"
+                                                >
+                                                    <Plus className="w-3 h-3" /> Thêm ca khám
+                                                </button>
+                                            </div>
+                                            {caKhams.length > 0 ? (
+                                                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                                                    {caKhams.map((ca, idx) => (
+                                                        <div 
+                                                            key={ca.MaCaKham || idx} 
+                                                            className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs"
+                                                        >
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="w-5 h-5 rounded bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center">
+                                                                    {idx + 1}
+                                                                </span>
+                                                                <span className="font-mono font-bold text-slate-800">
+                                                                    {ca.GioBatDau?.slice(0, 5)} - {ca.GioKetThuc?.slice(0, 5)}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-[11px] text-slate-500">
+                                                                    Tối đa: <strong className="text-slate-700">{ca.SoLuongTiepNhan}</strong>
+                                                                </span>
+                                                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700">
+                                                                    {ca.TrangThai || 'CON_TRONG'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-slate-400 italic p-3 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                                    Chưa phân chia ca khám con. Nhấn "+ Thêm ca khám" để tạo khung giờ hẹn.
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {/* Actions footer */}
+                                        <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                                            <a
+                                                href="/admin/doctors"
+                                                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 hover:underline"
+                                            >
+                                                Hồ sơ Bác sĩ tại Quản lý Bác sĩ <ExternalLink className="w-3 h-3" />
+                                            </a>
+                                            <button
+                                                type="button"
+                                                onClick={() => setViewingSchedule(null)}
+                                                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs"
+                                            >
+                                                Đóng
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            // Chi tiết cho Nhân viên CLS / Lễ tân
+                            const staffName = staff?.name || staff?.HoTen || staff?.TenDangNhap || 'Nhân sự';
+                            const roleName = staff?.vaiTro?.TenVaiTro || staff?.vai_tro?.TenVaiTro || (activeScheduleTab === 'cls' ? 'Kỹ thuật viên CLS' : 'Lễ tân tiếp đón');
+                            return (
+                                <div className="space-y-4">
+                                    <div className="p-4 rounded-2xl bg-gradient-to-br from-sky-50/70 via-white to-sky-50/30 border border-sky-100 flex items-start gap-4">
+                                        <div className="w-14 h-14 rounded-2xl bg-sky-600 text-white flex items-center justify-center text-lg font-black shadow-md shrink-0">
+                                            {activeScheduleTab === 'cls' ? 'CLS' : 'LT'}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <h4 className="text-base font-black text-slate-900 leading-tight">
+                                                    {staffName}
+                                                </h4>
+                                                <span className="px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-bold border border-sky-200">
+                                                    {roleName}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-slate-500 font-mono mt-1">
+                                                Tài khoản: @{staff?.TenDangNhap || staffName}
+                                            </p>
+                                            {staff?.Email && (
+                                                <p className="text-xs text-slate-600 mt-0.5 flex items-center gap-1">
+                                                    <Mail className="w-3 h-3 text-slate-400" /> {staff.Email}
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Thông tin ca trực */}
+                                    <div className="p-3.5 rounded-2xl bg-sky-50/60 border border-sky-100 space-y-2 text-xs">
+                                        <div className="flex items-center justify-between font-bold text-slate-800">
+                                            <span className="flex items-center gap-1.5 text-sky-900">
+                                                <Calendar className="w-4 h-4 text-sky-600" />
+                                                {formatDate(viewingSchedule.NgayLamViec)}
+                                            </span>
+                                            <span className="flex items-center gap-1 font-mono text-sky-700 bg-white px-2 py-0.5 rounded-md border border-sky-100">
+                                                <Clock className="w-3.5 h-3.5 text-sky-500" />
+                                                {viewingSchedule.GioBatDau?.slice(0, 5)} - {viewingSchedule.GioKetThuc?.slice(0, 5)}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1.5 border-t border-sky-100/70">
+                                            <span>Trạng thái: <strong className="text-emerald-700 font-bold">{viewingSchedule.TrangThai || 'MỞ'}</strong></span>
+                                            <span>Mã phân ca: #{viewingSchedule.MaLichLamViec}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Actions footer */}
+                                    <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                                        <a
+                                            href="/admin/staffs"
+                                            className="text-xs font-semibold text-sky-600 hover:text-sky-800 flex items-center gap-1 hover:underline"
+                                        >
+                                            Đến Quản lý Nhân sự <ExternalLink className="w-3 h-3" />
+                                        </a>
+                                        <button
+                                            type="button"
+                                            onClick={() => setViewingSchedule(null)}
+                                            className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs"
+                                        >
+                                            Đóng
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             )}

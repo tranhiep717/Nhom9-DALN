@@ -15,7 +15,11 @@ import {
     X,
     Eye,
     EyeOff,
-    Loader2
+    Loader2,
+    Stethoscope,
+    UserCheck,
+    Briefcase,
+    FlaskConical
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import axios from 'axios';
@@ -28,6 +32,28 @@ interface RoleItem {
     MoTa?: string;
 }
 
+interface DoctorItem {
+    MaBacSi: number;
+    MaTaiKhoan?: number;
+    HoTen: string;
+    MaChuyenKhoa: number;
+    EmailLienHe?: string;
+    SoDienThoai?: string;
+    chuyen_khoa?: {
+        MaChuyenKhoa: number;
+        TenChuyenKhoa: string;
+    };
+}
+
+interface StaffItem {
+    MaNhanVien: number;
+    MaTaiKhoan?: number;
+    HoTen: string;
+    LoaiNhanVien: string;
+    SoDienThoai?: string;
+    EmailLienHe?: string;
+}
+
 interface AccountItem {
     MaTaiKhoan: number;
     TenDangNhap: string;
@@ -35,12 +61,16 @@ interface AccountItem {
     TrangThai: string; // 'HOAT_DONG', 'KHOA'
     NgayTao: string;
     vai_tro?: RoleItem;
+    bac_si?: DoctorItem;
+    nhan_vien?: StaffItem;
 }
 
 interface AccountsProps {
     auth: any;
     users: AccountItem[];
     roles: RoleItem[];
+    unlinkedDoctors?: DoctorItem[];
+    unlinkedStaff?: StaffItem[];
     filters: {
         search?: string;
         role_id?: string;
@@ -48,12 +78,26 @@ interface AccountsProps {
     };
 }
 
-export default function Accounts({ auth, users = [], roles = [], filters = {} }: AccountsProps) {
+function convertToUsername(str: string): string {
+    return str
+        .toLowerCase()
+        .replace(/^(bs\.|bs|bác sĩ|ths\.|ths|ts\.|ts|ck1|ck2)\s+/gi, '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[đĐ]/g, 'd')
+        .replace(/[^a-z0-9]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_|_$/g, '');
+}
+
+export default function Accounts({ auth, users = [], roles = [], unlinkedDoctors = [], unlinkedStaff = [], filters = {} }: AccountsProps) {
     const [search, setSearch] = useState(filters.search || '');
     const [roleFilter, setRoleFilter] = useState(filters.role_id || '');
     const [statusFilter, setStatusFilter] = useState(filters.status || '');
 
     const [accountList, setAccountList] = useState<AccountItem[]>(users);
+    const [availableDoctors, setAvailableDoctors] = useState<DoctorItem[]>(unlinkedDoctors);
+    const [availableStaff, setAvailableStaff] = useState<StaffItem[]>(unlinkedStaff);
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
 
@@ -74,7 +118,51 @@ export default function Accounts({ auth, users = [], roles = [], filters = {} }:
         MatKhau: '',
         MaVaiTro: roles[0]?.MaVaiTro || 3,
         TrangThai: 'HOAT_DONG',
+        MaBacSi: '' as number | string,
+        MaNhanVien: '' as number | string,
     });
+
+    const isDoctorRole = useMemo(() => {
+        const selectedRole = roles.find(r => r.MaVaiTro === Number(formData.MaVaiTro));
+        return selectedRole?.TenVaiTro === 'BAC_SI' || Number(formData.MaVaiTro) === 2;
+    }, [formData.MaVaiTro, roles]);
+
+    const isReceptionistRole = useMemo(() => {
+        const selectedRole = roles.find(r => r.MaVaiTro === Number(formData.MaVaiTro));
+        return selectedRole?.TenVaiTro === 'LE_TAN' || Number(formData.MaVaiTro) === 4;
+    }, [formData.MaVaiTro, roles]);
+
+    const isClsRole = useMemo(() => {
+        const selectedRole = roles.find(r => r.MaVaiTro === Number(formData.MaVaiTro));
+        return selectedRole?.TenVaiTro === 'NHAN_VIEN_CAN_LAM_SANG' || Number(formData.MaVaiTro) === 5;
+    }, [formData.MaVaiTro, roles]);
+
+    const isStaffRole = isReceptionistRole || isClsRole;
+
+    const doctorOptions = useMemo(() => {
+        if (editingAccount && editingAccount.bac_si) {
+            const exists = availableDoctors.some(d => d.MaBacSi === editingAccount.bac_si?.MaBacSi);
+            if (!exists) {
+                return [editingAccount.bac_si, ...availableDoctors];
+            }
+        }
+        return availableDoctors;
+    }, [availableDoctors, editingAccount]);
+
+    const staffOptions = useMemo(() => {
+        let targetType = '';
+        if (isReceptionistRole) targetType = 'LE_TAN';
+        else if (isClsRole) targetType = 'CAN_LAM_SANG';
+
+        const list = targetType ? availableStaff.filter(s => s.LoaiNhanVien === targetType) : availableStaff;
+        if (editingAccount && editingAccount.nhan_vien) {
+            const exists = list.some(s => s.MaNhanVien === editingAccount.nhan_vien?.MaNhanVien);
+            if (!exists) {
+                return [editingAccount.nhan_vien, ...list];
+            }
+        }
+        return list;
+    }, [availableStaff, editingAccount, isReceptionistRole, isClsRole]);
 
     const currentAdminId = auth?.user?.MaTaiKhoan;
 
@@ -96,8 +184,10 @@ export default function Accounts({ auth, users = [], roles = [], filters = {} }:
             TenDangNhap: '',
             Email: '',
             MatKhau: '',
-            MaVaiTro: roles[0]?.MaVaiTro || 3,
+            MaVaiTro: roles.find(r => r.TenVaiTro === 'BAC_SI')?.MaVaiTro || roles[0]?.MaVaiTro || 2,
             TrangThai: 'HOAT_DONG',
+            MaBacSi: '',
+            MaNhanVien: '',
         });
         setModalOpen(true);
     };
@@ -110,8 +200,67 @@ export default function Accounts({ auth, users = [], roles = [], filters = {} }:
             MatKhau: '',
             MaVaiTro: acc.vai_tro?.MaVaiTro || roles[0]?.MaVaiTro || 3,
             TrangThai: acc.TrangThai,
+            MaBacSi: acc.bac_si?.MaBacSi || '',
+            MaNhanVien: acc.nhan_vien?.MaNhanVien || '',
         });
         setModalOpen(true);
+    };
+
+    const handleDoctorSelect = (docIdStr: string) => {
+        const docId = docIdStr ? Number(docIdStr) : '';
+        const selectedDoc = doctorOptions.find(d => d.MaBacSi === docId);
+
+        let newEmail = formData.Email;
+        let newUsername = formData.TenDangNhap;
+
+        if (selectedDoc && !editingAccount) {
+            if (!newEmail || newEmail.includes('@smartcare.vn')) {
+                newEmail = selectedDoc.EmailLienHe || `bacsi.${convertToUsername(selectedDoc.HoTen)}@smartcare.vn`;
+            }
+            if (!newUsername || newUsername.startsWith('bacsi_')) {
+                newUsername = `bacsi_${convertToUsername(selectedDoc.HoTen)}`;
+            }
+        }
+
+        setFormData(prev => ({
+            ...prev,
+            MaBacSi: docId,
+            Email: newEmail,
+            TenDangNhap: newUsername,
+        }));
+    };
+
+    const handleStaffSelect = (staffIdStr: string) => {
+        const staffId = staffIdStr ? Number(staffIdStr) : '';
+        const selectedStaff = staffOptions.find(s => s.MaNhanVien === staffId);
+
+        let newEmail = formData.Email;
+        let newUsername = formData.TenDangNhap;
+
+        if (selectedStaff && !editingAccount) {
+            const prefix = selectedStaff.LoaiNhanVien === 'LE_TAN' ? 'letan_' : 'cls_';
+            const slug = selectedStaff.HoTen
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[đĐ]/g, 'd')
+                .replace(/[^a-z0-9]/g, '_')
+                .replace(/_+/g, '_')
+                .replace(/^_|_$/g, '');
+            if (!newUsername || newUsername.startsWith('letan_') || newUsername.startsWith('cls_')) {
+                newUsername = `${prefix}${slug}`;
+            }
+            if (!newEmail || newEmail.includes('@smartcare.vn')) {
+                newEmail = selectedStaff.EmailLienHe || `${newUsername.replace('_', '.')}@smartcare.vn`;
+            }
+        }
+
+        setFormData(prev => ({
+            ...prev,
+            MaNhanVien: staffId,
+            Email: newEmail,
+            TenDangNhap: newUsername,
+        }));
     };
 
     const handleSave = async (e: React.FormEvent) => {
@@ -120,24 +269,44 @@ export default function Accounts({ auth, users = [], roles = [], filters = {} }:
         setFeedback(null);
 
         try {
+            const payload = {
+                ...formData,
+                MaBacSi: formData.MaBacSi ? Number(formData.MaBacSi) : null,
+                MaNhanVien: formData.MaNhanVien ? Number(formData.MaNhanVien) : null,
+            };
+
             if (editingAccount) {
                 // Update
-                const res = await axios.put(`/admin/users/${editingAccount.MaTaiKhoan}`, formData);
+                const res = await axios.put(`/admin/users/${editingAccount.MaTaiKhoan}`, payload);
                 if (res.data?.success) {
                     setFeedback({ type: 'success', message: res.data.message });
+                    const updatedAcc: AccountItem = res.data.data;
                     setAccountList((prev) =>
                         prev.map((item) =>
-                            item.MaTaiKhoan === editingAccount.MaTaiKhoan ? res.data.data : item
+                            item.MaTaiKhoan === editingAccount.MaTaiKhoan ? updatedAcc : item
                         )
                     );
+                    if (payload.MaBacSi) {
+                        setAvailableDoctors((prev) => prev.filter(d => d.MaBacSi !== payload.MaBacSi));
+                    }
+                    if (payload.MaNhanVien) {
+                        setAvailableStaff((prev) => prev.filter(s => s.MaNhanVien !== payload.MaNhanVien));
+                    }
                     setModalOpen(false);
                 }
             } else {
                 // Create
-                const res = await axios.post('/admin/users', formData);
+                const res = await axios.post('/admin/users', payload);
                 if (res.data?.success) {
                     setFeedback({ type: 'success', message: res.data.message });
-                    setAccountList((prev) => [res.data.data, ...prev]);
+                    const newAcc: AccountItem = res.data.data;
+                    setAccountList((prev) => [newAcc, ...prev]);
+                    if (payload.MaBacSi) {
+                        setAvailableDoctors((prev) => prev.filter(d => d.MaBacSi !== payload.MaBacSi));
+                    }
+                    if (payload.MaNhanVien) {
+                        setAvailableStaff((prev) => prev.filter(s => s.MaNhanVien !== payload.MaNhanVien));
+                    }
                     setModalOpen(false);
                 }
             }
@@ -325,16 +494,63 @@ export default function Accounts({ auth, users = [], roles = [], filters = {} }:
                                             <td className="px-6 py-4 font-mono font-bold text-slate-500">
                                                 #{acc.MaTaiKhoan}
                                             </td>
-                                            <td className="px-6 py-4 font-bold text-slate-900 flex items-center gap-2">
-                                                <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-xs">
-                                                    {acc.TenDangNhap.charAt(0).toUpperCase()}
+                                            <td className="px-6 py-4 font-bold text-slate-900">
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
+                                                        {acc.TenDangNhap.charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <div>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="font-semibold text-slate-900">{acc.TenDangNhap}</span>
+                                                            {isSelf && (
+                                                                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 text-[10px] font-bold rounded-md">
+                                                                    (Bạn)
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {acc.vai_tro?.TenVaiTro === 'BAC_SI' && (
+                                                            acc.bac_si ? (
+                                                                <div className="text-[11px] font-medium text-emerald-700 flex items-center gap-1 mt-0.5">
+                                                                    <Stethoscope className="w-3 h-3 text-emerald-600 shrink-0" />
+                                                                    <span>[BS{acc.bac_si.MaBacSi}] {acc.bac_si.HoTen} ({acc.bac_si.chuyen_khoa?.TenChuyenKhoa || 'Chuyên khoa'})</span>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-[11px] font-medium text-amber-600 flex items-center gap-1 mt-0.5">
+                                                                    <AlertCircle className="w-3 h-3 text-amber-500 shrink-0" />
+                                                                    <span>Chưa gán bác sĩ cụ thể</span>
+                                                                </div>
+                                                            )
+                                                        )}
+
+                                                        {acc.vai_tro?.TenVaiTro === 'LE_TAN' && (
+                                                            acc.nhan_vien ? (
+                                                                <div className="text-[11px] font-medium text-amber-700 flex items-center gap-1 mt-0.5">
+                                                                    <Briefcase className="w-3 h-3 text-amber-600 shrink-0" />
+                                                                    <span>[LT{acc.nhan_vien.MaNhanVien}] {acc.nhan_vien.HoTen}</span>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-[11px] font-medium text-amber-600 flex items-center gap-1 mt-0.5">
+                                                                    <AlertCircle className="w-3 h-3 text-amber-500 shrink-0" />
+                                                                    <span>Chưa gán hồ sơ Lễ tân</span>
+                                                                </div>
+                                                            )
+                                                        )}
+
+                                                        {acc.vai_tro?.TenVaiTro === 'NHAN_VIEN_CAN_LAM_SANG' && (
+                                                            acc.nhan_vien ? (
+                                                                <div className="text-[11px] font-medium text-blue-700 flex items-center gap-1 mt-0.5">
+                                                                    <FlaskConical className="w-3 h-3 text-blue-600 shrink-0" />
+                                                                    <span>[CLS{acc.nhan_vien.MaNhanVien}] {acc.nhan_vien.HoTen}</span>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-[11px] font-medium text-amber-600 flex items-center gap-1 mt-0.5">
+                                                                    <AlertCircle className="w-3 h-3 text-amber-500 shrink-0" />
+                                                                    <span>Chưa gán hồ sơ KTV CLS</span>
+                                                                </div>
+                                                            )
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <span>{acc.TenDangNhap}</span>
-                                                {isSelf && (
-                                                    <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 text-[10px] font-bold rounded-md">
-                                                        (Bạn)
-                                                    </span>
-                                                )}
                                             </td>
                                             <td className="px-6 py-4 text-slate-600 font-mono">
                                                 {acc.Email}
@@ -467,8 +683,17 @@ export default function Accounts({ auth, users = [], roles = [], filters = {} }:
                                 </label>
                                 <select
                                     value={formData.MaVaiTro}
-                                    onChange={(e) => setFormData({ ...formData, MaVaiTro: Number(e.target.value) })}
-                                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none bg-white"
+                                    onChange={(e) => {
+                                        const newRoleId = Number(e.target.value);
+                                        const roleObj = roles.find(r => r.MaVaiTro === newRoleId);
+                                        const isDoc = roleObj?.TenVaiTro === 'BAC_SI' || newRoleId === 2;
+                                        setFormData(prev => ({ 
+                                            ...prev, 
+                                            MaVaiTro: newRoleId,
+                                            MaBacSi: isDoc ? prev.MaBacSi : '',
+                                        }));
+                                    }}
+                                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none bg-white font-medium"
                                 >
                                     {roles.map((r) => (
                                         <option key={r.MaVaiTro} value={r.MaVaiTro}>
@@ -477,6 +702,76 @@ export default function Accounts({ auth, users = [], roles = [], filters = {} }:
                                     ))}
                                 </select>
                             </div>
+
+                            {/* DROPDOWN CHỌN GÁN BÁC SĨ CỤ THỂ KHI VAI TRÒ LÀ BÁC SĨ */}
+                            {isDoctorRole && (
+                                <div className="bg-gradient-to-br from-indigo-50/80 to-blue-50/50 border border-indigo-200/90 rounded-2xl p-4 space-y-2.5 shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                        <label className="block text-xs font-bold text-indigo-950 uppercase flex items-center gap-1.5">
+                                            <Stethoscope className="w-4 h-4 text-indigo-600" />
+                                            Gán hồ sơ Bác sĩ cụ thể
+                                        </label>
+                                        <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full">
+                                            {doctorOptions.length} bác sĩ trong viện
+                                        </span>
+                                    </div>
+
+                                    <select
+                                        value={formData.MaBacSi || ''}
+                                        onChange={(e) => handleDoctorSelect(e.target.value)}
+                                        className="w-full px-3.5 py-2.5 rounded-xl border border-indigo-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none bg-white font-medium text-slate-800"
+                                    >
+                                        <option value="">-- Chọn Bác sĩ chưa có tài khoản đăng nhập --</option>
+                                        {doctorOptions.map((doc) => (
+                                            <option key={doc.MaBacSi} value={doc.MaBacSi}>
+                                                [BS{doc.MaBacSi}] {doc.HoTen} - {doc.chuyen_khoa?.TenChuyenKhoa || 'Chuyên khoa'}
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    <p className="text-[11px] text-indigo-800/90 leading-relaxed flex items-start gap-1">
+                                        <span className="shrink-0">💡</span>
+                                        <span>
+                                            Khi chọn bác sĩ, tài khoản này sẽ được gắn trực tiếp vào hồ sơ bác sĩ. Khi bác sĩ đăng nhập sẽ tự động nhận diện lịch khám, ca trực và danh sách bệnh nhân của mình.
+                                        </span>
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* DROPDOWN CHỌN GÁN NHÂN VIÊN LỄ TÂN / CLS CỤ THỂ */}
+                            {isStaffRole && (
+                                <div className="bg-gradient-to-br from-amber-50/80 to-indigo-50/50 border border-amber-200/90 rounded-2xl p-4 space-y-2.5 shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                        <label className="block text-xs font-bold text-amber-950 uppercase flex items-center gap-1.5">
+                                            {isReceptionistRole ? <Briefcase className="w-4 h-4 text-amber-600" /> : <FlaskConical className="w-4 h-4 text-blue-600" />}
+                                            {isReceptionistRole ? 'Gán hồ sơ Nhân viên Lễ tân' : 'Gán hồ sơ Kỹ thuật viên CLS'}
+                                        </label>
+                                        <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full">
+                                            {staffOptions.length} nhân sự khả dụng
+                                        </span>
+                                    </div>
+
+                                    <select
+                                        value={formData.MaNhanVien || ''}
+                                        onChange={(e) => handleStaffSelect(e.target.value)}
+                                        className="w-full px-3.5 py-2.5 rounded-xl border border-amber-300 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:outline-none bg-white font-medium text-slate-800"
+                                    >
+                                        <option value="">-- Chọn nhân viên chưa có tài khoản trong viện --</option>
+                                        {staffOptions.map((st) => (
+                                            <option key={st.MaNhanVien} value={st.MaNhanVien}>
+                                                [#{st.MaNhanVien}] {st.HoTen} ({st.LoaiNhanVien === 'LE_TAN' ? 'Lễ tân' : 'Cận lâm sàng'})
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    <p className="text-[11px] text-amber-900/90 leading-relaxed flex items-start gap-1">
+                                        <span className="shrink-0">💡</span>
+                                        <span>
+                                            Khi chọn nhân viên, tài khoản sẽ liên kết với hồ sơ nhân sự, hiển thị họ tên thật trên hệ thống và các hóa đơn, phiếu kết quả xét nghiệm.
+                                        </span>
+                                    </p>
+                                </div>
+                            )}
 
                             <div>
                                 <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
