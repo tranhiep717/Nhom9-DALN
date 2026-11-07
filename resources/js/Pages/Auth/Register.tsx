@@ -5,6 +5,7 @@ import TextInput from '@/Components/TextInput';
 import GuestLayout from '@/Layouts/GuestLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { FormEventHandler } from 'react';
+import { ArrowLeft, LogIn } from 'lucide-react';
 
 export default function Register() {
     const { data, setData, post, processing, errors, reset } = useForm({
@@ -24,11 +25,37 @@ export default function Register() {
 
     return (
         <GuestLayout>
-            <Head title="Register" />
+            <Head title="Đăng ký tài khoản - SmartCare" />
+
+            {/* Thanh điều hướng nhanh: Quay lại trang chủ hoặc chuyển sang Đăng nhập */}
+            <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-3">
+                <Link
+                    href="/"
+                    className="inline-flex items-center gap-1.5 text-xs sm:text-sm text-gray-500 hover:text-indigo-600 transition-colors font-medium group"
+                >
+                    <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
+                    Quay lại trang chủ
+                </Link>
+
+                <Link
+                    href={route('login')}
+                    className="inline-flex items-center gap-1 text-xs sm:text-sm font-semibold text-indigo-600 hover:text-indigo-700 hover:underline"
+                >
+                    <LogIn className="w-3.5 h-3.5" />
+                    Đăng nhập
+                </Link>
+            </div>
+
+            <div className="mb-5">
+                <h2 className="text-xl font-bold text-gray-900">Đăng ký tài khoản mới</h2>
+                <p className="text-xs text-gray-500 mt-1">
+                    Tạo tài khoản bệnh nhân để dễ dàng đặt lịch khám và xem kết quả y tế
+                </p>
+            </div>
 
             <form onSubmit={submit}>
                 <div>
-                    <InputLabel htmlFor="name" value="Name" />
+                    <InputLabel htmlFor="name" value="Họ và tên" />
 
                     <TextInput
                         id="name"
@@ -36,6 +63,7 @@ export default function Register() {
                         value={data.name}
                         className="mt-1 block w-full"
                         autoComplete="name"
+                        placeholder="Nguyễn Văn A"
                         isFocused={true}
                         onChange={(e) => setData('name', e.target.value)}
                         required
@@ -54,6 +82,7 @@ export default function Register() {
                         value={data.email}
                         className="mt-1 block w-full"
                         autoComplete="username"
+                        placeholder="nguyenvana@example.com"
                         onChange={(e) => setData('email', e.target.value)}
                         required
                     />
@@ -62,7 +91,7 @@ export default function Register() {
                 </div>
 
                 <div className="mt-4">
-                    <InputLabel htmlFor="password" value="Password" />
+                    <InputLabel htmlFor="password" value="Mật khẩu" />
 
                     <TextInput
                         id="password"
@@ -71,6 +100,7 @@ export default function Register() {
                         value={data.password}
                         className="mt-1 block w-full"
                         autoComplete="new-password"
+                        placeholder="••••••••"
                         onChange={(e) => setData('password', e.target.value)}
                         required
                     />
@@ -81,7 +111,7 @@ export default function Register() {
                 <div className="mt-4">
                     <InputLabel
                         htmlFor="password_confirmation"
-                        value="Confirm Password"
+                        value="Xác nhận mật khẩu"
                     />
 
                     <TextInput
@@ -91,6 +121,7 @@ export default function Register() {
                         value={data.password_confirmation}
                         className="mt-1 block w-full"
                         autoComplete="new-password"
+                        placeholder="••••••••"
                         onChange={(e) =>
                             setData('password_confirmation', e.target.value)
                         }
@@ -103,17 +134,22 @@ export default function Register() {
                     />
                 </div>
 
-                <div className="mt-4 flex items-center justify-end">
-                    <Link
-                        href={route('login')}
-                        className="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                    >
-                        Already registered?
-                    </Link>
-
-                    <PrimaryButton className="ms-4" disabled={processing}>
-                        Register
+                <div className="mt-6">
+                    <PrimaryButton className="w-full justify-center py-2.5 text-base font-semibold shadow-md" disabled={processing}>
+                        {processing ? 'Đang tạo tài khoản...' : 'Đăng ký tài khoản'}
                     </PrimaryButton>
+                </div>
+
+                <div className="mt-6 pt-5 border-t border-gray-100 text-center">
+                    <p className="text-sm text-gray-600">
+                        Đã có tài khoản?{' '}
+                        <Link
+                            href={route('login')}
+                            className="font-semibold text-indigo-600 hover:text-indigo-700 hover:underline"
+                        >
+                            Đăng nhập ngay
+                        </Link>
+                    </p>
                 </div>
             </form>
         </GuestLayout>

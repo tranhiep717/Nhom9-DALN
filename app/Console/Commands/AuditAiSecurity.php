@@ -35,7 +35,8 @@ class AuditAiSecurity extends Command
 
         $configuredModel = config('services.gemini.model');
 
-        if ($currentModel === 'gemini-3.8-flash' && $configuredModel === 'gemini-3.8-flash') {
+        $validModels = ['gemini-flash-lite-latest', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+        if (in_array($currentModel, $validModels) && in_array($configuredModel, $validModels)) {
             $this->info("[PASS 1.1] Đã chuyển sang model Flash hiện hành: {$currentModel} (cấu hình tập trung trong config/services.php và .env).");
             $passed++;
         } else {

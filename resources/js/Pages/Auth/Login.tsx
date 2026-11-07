@@ -6,6 +6,7 @@ import TextInput from '@/Components/TextInput';
 import GuestLayout from '@/Layouts/GuestLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { FormEventHandler } from 'react';
+import { ArrowLeft, UserPlus } from 'lucide-react';
 
 export default function Login({
     status,
@@ -32,10 +33,36 @@ export default function Login({
 
     return (
         <GuestLayout>
-            <Head title="Log in" />
+            <Head title="Đăng nhập - SmartCare" />
+
+            {/* Thanh điều hướng nhanh: Quay lại trang chủ hoặc chuyển sang Đăng ký */}
+            <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-3">
+                <Link
+                    href="/"
+                    className="inline-flex items-center gap-1.5 text-xs sm:text-sm text-gray-500 hover:text-indigo-600 transition-colors font-medium group"
+                >
+                    <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
+                    Quay lại trang chủ
+                </Link>
+
+                <Link
+                    href={route('register')}
+                    className="inline-flex items-center gap-1 text-xs sm:text-sm font-semibold text-indigo-600 hover:text-indigo-700 hover:underline"
+                >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    Đăng ký tài khoản
+                </Link>
+            </div>
+
+            <div className="mb-5">
+                <h2 className="text-xl font-bold text-gray-900">Đăng nhập tài khoản</h2>
+                <p className="text-xs text-gray-500 mt-1">
+                    Đăng nhập để đặt lịch khám và tra cứu hồ sơ sức khỏe
+                </p>
+            </div>
 
             {status && (
-                <div className="mb-4 text-sm font-medium text-green-600">
+                <div className="mb-4 text-sm font-medium text-green-600 bg-green-50 p-3 rounded-lg border border-green-200">
                     {status}
                 </div>
             )}
@@ -49,7 +76,7 @@ export default function Login({
 
             <form onSubmit={submit}>
                 <div>
-                    <InputLabel htmlFor="email" value="Email" />
+                    <InputLabel htmlFor="email" value="Email hoặc Tên đăng nhập" />
 
                     <TextInput
                         id="email"
@@ -58,6 +85,7 @@ export default function Login({
                         value={data.email}
                         className="mt-1 block w-full"
                         autoComplete="username"
+                        placeholder="admin@smartcare.vn"
                         isFocused={true}
                         onChange={(e) => setData('email', e.target.value)}
                     />
@@ -66,7 +94,7 @@ export default function Login({
                 </div>
 
                 <div className="mt-4">
-                    <InputLabel htmlFor="password" value="Password" />
+                    <InputLabel htmlFor="password" value="Mật khẩu" />
 
                     <TextInput
                         id="password"
@@ -75,14 +103,15 @@ export default function Login({
                         value={data.password}
                         className="mt-1 block w-full"
                         autoComplete="current-password"
+                        placeholder="••••••••"
                         onChange={(e) => setData('password', e.target.value)}
                     />
 
                     <InputError message={errors.password} className="mt-2" />
                 </div>
 
-                <div className="mt-4 block">
-                    <label className="flex items-center">
+                <div className="mt-4 flex items-center justify-between">
+                    <label className="flex items-center cursor-pointer">
                         <Checkbox
                             name="remember"
                             checked={data.remember}
@@ -94,24 +123,37 @@ export default function Login({
                             }
                         />
                         <span className="ms-2 text-sm text-gray-600">
-                            Remember me
+                            Ghi nhớ đăng nhập
                         </span>
                     </label>
-                </div>
 
-                <div className="mt-4 flex items-center justify-end">
                     {canResetPassword && (
                         <Link
                             href={route('password.request')}
-                            className="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                            className="rounded-md text-sm text-indigo-600 hover:text-indigo-800 hover:underline focus:outline-none"
                         >
-                            Forgot your password?
+                            Quên mật khẩu?
                         </Link>
                     )}
+                </div>
 
-                    <PrimaryButton className="ms-4" disabled={processing}>
-                        Log in
+                <div className="mt-6">
+                    <PrimaryButton className="w-full justify-center py-2.5 text-base font-semibold shadow-md" disabled={processing}>
+                        {processing ? 'Đang đăng nhập...' : 'Đăng nhập'}
                     </PrimaryButton>
+                </div>
+
+                {/* Chuyển qua đăng ký tài khoản */}
+                <div className="mt-6 pt-5 border-t border-gray-100 text-center">
+                    <p className="text-sm text-gray-600">
+                        Chưa có tài khoản bệnh nhân?{' '}
+                        <Link
+                            href={route('register')}
+                            className="font-semibold text-indigo-600 hover:text-indigo-700 hover:underline"
+                        >
+                            Đăng ký ngay
+                        </Link>
+                    </p>
                 </div>
             </form>
         </GuestLayout>

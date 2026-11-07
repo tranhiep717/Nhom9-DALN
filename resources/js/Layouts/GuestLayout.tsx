@@ -16,15 +16,20 @@ export default function Guest({ children }: PropsWithChildren) {
     };
 
     return (
-        <div className="flex min-h-screen flex-col items-center bg-gray-100 pt-6 sm:justify-center sm:pt-0">
-            <div>
-                <Link href={getLogoUrl()}>
-                    <ApplicationLogo className="h-20 w-20 fill-current text-gray-500" />
+        <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-slate-50 via-sky-50/40 to-indigo-50/40 py-8 px-4 sm:px-6">
+            <div className="mb-2">
+                <Link href={getLogoUrl()} className="flex items-center gap-2.5 group">
+                    <ApplicationLogo className="h-12 w-12 transition-transform group-hover:scale-105" />
+                    <span className="text-2xl font-bold text-darkblue tracking-tight">SmartCare</span>
                 </Link>
             </div>
 
-            <div className="mt-6 w-full overflow-hidden bg-white px-6 py-4 shadow-md sm:max-w-md sm:rounded-lg">
+            <div className="mt-4 w-full overflow-hidden bg-white px-6 py-6 shadow-xl shadow-slate-200/50 border border-slate-100 sm:max-w-md rounded-2xl">
                 {children}
+            </div>
+            
+            <div className="mt-6 text-center text-xs text-gray-400">
+                &copy; {new Date().getFullYear()} Hệ thống Phòng khám Đa khoa SmartCare. All rights reserved.
             </div>
         </div>
     );

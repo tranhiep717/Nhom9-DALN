@@ -16,7 +16,7 @@ class AiMedicalAssistantService
     public function __construct()
     {
         $this->apiKey = config('services.gemini.api_key') ?: env('GEMINI_API_KEY');
-        $this->model = config('services.gemini.model') ?: env('GEMINI_MODEL', 'gemini-3.8-flash');
+        $this->model = config('services.gemini.model') ?: env('GEMINI_MODEL', 'gemini-flash-lite-latest');
     }
 
     /**
@@ -55,88 +55,115 @@ class AiMedicalAssistantService
 
         // 3. Chuẩn bị ngữ cảnh thông tin phòng khám và hồ sơ bệnh nhân (ẩn danh hóa PII)
         $systemPrompt = $this->buildSystemPrompt($patient);
+        $contents = $this->buildContentsPayload($question, $conversationHistory);
 
-        try {
-            // Gọi Google Gemini API với timeout 10 giây qua Header bảo mật (không để lộ API key trên query string URL)
-            $url = "https://generativelanguage.googleapis.com/v1beta/models/{$this->model}:generateContent";
+        // Danh sách model theo thứ tự: model cấu hình -> các model dự phòng
+        $modelsToTry = array_values(array_unique([
+            $this->model,
+            'gemini-flash-lite-latest',
+            'gemini-3.1-flash-lite',
+            'gemini-3.5-flash-lite'
+        ]));
 
-            // Chuẩn hóa cấu trúc contents nghiêm ngặt theo chuẩn Gemini API (xen kẽ user/model, khử PII, chống parts rỗng)
-            $contents = $this->buildContentsPayload($question, $conversationHistory);
+        foreach ($modelsToTry as $targetModel) {
+            try {
+                // Gọi Google Gemini API qua Header bảo mật x-goog-api-key, ép IPv4 để tránh nghẽn DNS trên Windows
+                $url = "https://generativelanguage.googleapis.com/v1beta/models/{$targetModel}:generateContent";
 
-            $response = Http::withHeaders([
-                'x-goog-api-key' => $this->apiKey,
-                'Content-Type' => 'application/json',
-            ])->timeout(10)->post($url, [
-                'systemInstruction' => [
-                    'parts' => [['text' => $systemPrompt]],
-                ],
-                'contents' => $contents,
-                'generationConfig' => [
-                    'temperature' => 0.3, // Nhiệt độ thấp để giảm hallucination trong y tế
-                    'maxOutputTokens' => 800,
-                ],
-            ]);
+                $response = Http::withHeaders([
+                    'x-goog-api-key' => $this->apiKey,
+                    'Content-Type' => 'application/json',
+                ])
+                ->withOptions([
+                    'curl' => [
+                        CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
+                    ],
+                ])
+                ->timeout(15)
+                ->post($url, [
+                    'systemInstruction' => [
+                        'parts' => [['text' => $systemPrompt]],
+                    ],
+                    'contents' => $contents,
+                    'generationConfig' => [
+                        'temperature' => 0.3, // Nhiệt độ thấp để giảm hallucination trong y tế
+                        'maxOutputTokens' => 800,
+                    ],
+                ]);
 
-            if ($response->successful()) {
-                $data = $response->json();
+                if ($response->successful()) {
+                    $data = $response->json();
 
-                // 1. Kiểm tra nếu prompt bị Google chặn bởi Safety Policy
-                $blockReason = $data['promptFeedback']['blockReason'] ?? null;
-                if ($blockReason) {
-                    Log::warning("Gemini prompt blocked by Google Safety Policy: {$blockReason}");
-                    return [
-                        'success' => true,
-                        'reply' => 'Nội dung câu hỏi chạm vào giới hạn an toàn thông tin y tế. Vui lòng đặt câu hỏi về các dịch vụ thăm khám tại SmartCare hoặc đặt lịch hẹn với Bác sĩ.',
-                        'source' => 'system_fallback_safety_blocked',
-                        'disclaimer' => $this->getDisclaimer(),
-                    ];
-                }
-
-                // 2. Kiểm tra Candidate phản hồi
-                $candidate = $data['candidates'][0] ?? null;
-                if ($candidate) {
-                    $finishReason = $candidate['finishReason'] ?? null;
-                    if (in_array($finishReason, ['SAFETY', 'RECITATION', 'BLOCKLIST'])) {
-                        Log::warning("Gemini response candidate blocked: finishReason = {$finishReason}");
+                    // 1. Kiểm tra nếu prompt bị Google chặn bởi Safety Policy
+                    $blockReason = $data['promptFeedback']['blockReason'] ?? null;
+                    if ($blockReason) {
+                        Log::warning("Gemini prompt blocked by Google Safety Policy: {$blockReason}");
                         return [
                             'success' => true,
-                            'reply' => 'Nội dung phản hồi bị bộ lọc an toàn y tế giữ lại để bảo vệ người bệnh. Xin vui lòng liên hệ trực tiếp bác sĩ để được tư vấn an toàn.',
+                            'reply' => 'Nội dung câu hỏi chạm vào giới hạn an toàn thông tin y tế. Vui lòng đặt câu hỏi về các dịch vụ thăm khám tại SmartCare hoặc đặt lịch hẹn với Bác sĩ.',
                             'source' => 'system_fallback_safety_blocked',
                             'disclaimer' => $this->getDisclaimer(),
                         ];
                     }
 
-                    $replyText = $candidate['content']['parts'][0]['text'] ?? null;
-                    if ($replyText && trim($replyText) !== '') {
-                        return [
-                            'success' => true,
-                            'reply' => trim($replyText),
-                            'source' => 'gemini_api',
-                            'disclaimer' => $this->getDisclaimer(),
-                        ];
+                    // 2. Kiểm tra Candidate phản hồi
+                    $candidate = $data['candidates'][0] ?? null;
+                    if ($candidate) {
+                        $finishReason = $candidate['finishReason'] ?? null;
+                        if (in_array($finishReason, ['SAFETY', 'RECITATION', 'BLOCKLIST'])) {
+                            Log::warning("Gemini response candidate blocked: finishReason = {$finishReason}");
+                            return [
+                                'success' => true,
+                                'reply' => 'Nội dung phản hồi bị bộ lọc an toàn y tế giữ lại để bảo vệ người bệnh. Xin vui lòng liên hệ trực tiếp bác sĩ để được tư vấn an toàn.',
+                                'source' => 'system_fallback_safety_blocked',
+                                'disclaimer' => $this->getDisclaimer(),
+                            ];
+                        }
+
+                        $replyText = $candidate['content']['parts'][0]['text'] ?? null;
+                        if ($replyText && trim($replyText) !== '') {
+                            return [
+                                'success' => true,
+                                'reply' => trim($replyText),
+                                'source' => 'gemini_api',
+                                'disclaimer' => $this->getDisclaimer(),
+                            ];
+                        }
                     }
+
+                    Log::warning("Gemini API returned empty candidate content: " . mb_substr($response->body(), 0, 300));
+                    return [
+                        'success' => true,
+                        'reply' => $this->getFallbackResponse($question),
+                        'source' => 'system_fallback_on_api_error',
+                        'disclaimer' => $this->getDisclaimer(),
+                    ];
+                } else {
+                    $status = $response->status();
+                    Log::warning("Gemini API error ({$status}) for model {$targetModel}: " . mb_substr($response->body(), 0, 300));
+
+                    // Nếu gặp 404 (model cũ) hoặc 503 (quá tải), tự động thử model kế tiếp
+                    if (in_array($status, [404, 503])) {
+                        continue;
+                    }
+
+                    // Các lỗi khác (400 Invalid Key, 429 Quota) chuyển ngay sang Fallback an toàn
+                    return [
+                        'success' => true,
+                        'reply' => $this->getFallbackResponse($question),
+                        'source' => 'system_fallback_on_api_error',
+                        'disclaimer' => $this->getDisclaimer(),
+                    ];
                 }
-
-                Log::warning("Gemini API returned empty candidate content: " . mb_substr($response->body(), 0, 300));
-            } else {
-                Log::warning("Gemini API error ({$response->status()}): " . mb_substr($response->body(), 0, 300));
+            } catch (\Exception $e) {
+                Log::error('AI Medical Assistant Exception: ' . $e->getMessage());
+                return [
+                    'success' => true,
+                    'reply' => $this->getFallbackResponse($question),
+                    'source' => 'system_fallback_on_exception',
+                    'disclaimer' => $this->getDisclaimer(),
+                ];
             }
-
-            return [
-                'success' => true,
-                'reply' => $this->getFallbackResponse($question),
-                'source' => 'system_fallback_on_api_error',
-                'disclaimer' => $this->getDisclaimer(),
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('AI Medical Assistant Exception: ' . $e->getMessage());
-            return [
-                'success' => true,
-                'reply' => $this->getFallbackResponse($question),
-                'source' => 'system_fallback_on_exception',
-                'disclaimer' => $this->getDisclaimer(),
-            ];
         }
     }
 
