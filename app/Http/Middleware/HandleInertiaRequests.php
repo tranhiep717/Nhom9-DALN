@@ -31,7 +31,7 @@ class HandleInertiaRequests extends Middleware
     {
         $user = $request->user();
         if ($user) {
-            $user->loadMissing(['vaiTro', 'benhNhan', 'bacSi']);
+            $user->loadMissing(['vaiTro', 'benhNhan', 'bacSi', 'nhanVien']);
         }
 
         $todaySchedule = null;

@@ -59,7 +59,6 @@ class BenhNhanController extends Controller
         $patients = $query->orderBy('MaBenhNhan', 'desc')->paginate($perPage)->withQueryString();
 
         return Inertia::render('Receptionist/Patients', [
-            'auth'    => ['user' => $user],
             'patients' => $patients,
             'filters' => [
                 'search'   => $search,
