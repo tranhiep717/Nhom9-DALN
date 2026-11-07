@@ -206,7 +206,11 @@ Route::prefix('cls')->name('cls.')->middleware(['auth', 'role:NHAN_VIEN_CAN_LAM_
 Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:QUAN_TRI_VIEN'])->group(function () {
     Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('dashboard');
 
-    // Quản lý Bác sĩ
+    // Quản lý Nhân sự tập trung (Bác sĩ, Lễ tân, Cận lâm sàng, Dược sĩ)
+    Route::get('/staff-management', [AdminController::class, 'staffManagementIndex'])->name('staff-management');
+    Route::get('/personnel', function() { return redirect()->route('admin.staff-management'); })->name('personnel');
+
+    // Quản lý Bác sĩ (hỗ trợ chuyển hướng & tương thích ngược)
     Route::get('/doctors', [BacSiController::class, 'adminIndex'])->name('doctors');
     Route::post('/doctors', [BacSiController::class, 'store'])->name('doctors.store');
     Route::put('/doctors/{id}', [BacSiController::class, 'update'])->name('doctors.update');
@@ -229,6 +233,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:QUAN_TRI_VIEN'
     // Quản lý Bệnh nhân
     Route::get('/patients', [AdminController::class, 'patientsIndex'])->name('patients');
     Route::get('/patients/{id}', [AdminController::class, 'patientsShow'])->name('patients.show');
+
+    // Quản lý Danh mục Y tế tập trung (Chuyên khoa, Dịch vụ, Kho thuốc)
+    Route::get('/medical-catalogs', [AdminController::class, 'medicalCatalogsIndex'])->name('medical-catalogs');
+    Route::get('/catalogs', function() { return redirect()->route('admin.medical-catalogs'); })->name('catalogs');
 
     // Quản lý Chuyên khoa
     Route::get('/specialties', [AdminController::class, 'specialtiesIndex'])->name('specialties');
@@ -272,13 +280,16 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:QUAN_TRI_VIEN'
     Route::get('/invoices', [AdminController::class, 'invoicesIndex'])->name('invoices');
     Route::get('/reports', [AdminController::class, 'reportsIndex'])->name('reports');
 
-    // Giám sát Cận lâm sàng toàn viện
+    // Giám sát Vận hành Toàn viện (Tiếp đón & Hàng chờ + Cận lâm sàng)
+    Route::get('/operations-monitor', [AdminController::class, 'operationsMonitorIndex'])->name('operations-monitor');
+
+    // Giám sát Cận lâm sàng toàn viện (tương thích ngược)
     Route::get('/cls-monitor', [AdminController::class, 'clsMonitorIndex'])->name('cls-monitor');
 
-    // Báo cáo & Giám sát Tiếp đón - Hàng chờ Toàn viện
+    // Báo cáo & Giám sát Tiếp đón - Hàng chờ Toàn viện (tương thích ngược)
     Route::get('/reception-analytics', [AdminController::class, 'receptionAnalytics'])->name('reception-analytics');
-    Route::get('/reception', function() { return redirect()->route('admin.reception-analytics'); })->name('reception');
-    Route::get('/queue', function() { return redirect()->route('admin.reception-analytics'); })->name('queue');
+    Route::get('/reception', function() { return redirect()->route('admin.operations-monitor', ['tab' => 'reception']); })->name('reception');
+    Route::get('/queue', function() { return redirect()->route('admin.operations-monitor', ['tab' => 'reception']); })->name('queue');
 
     Route::get('/settings', function () { return redirect()->route('admin.dashboard'); })->name('settings');
 });

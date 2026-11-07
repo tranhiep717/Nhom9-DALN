@@ -698,6 +698,62 @@ class AdminController extends Controller
         ]);
     }
 
+    /**
+     * QUẢN LÝ DANH MỤC Y TẾ TẬP TRUNG (Chuyên khoa, Dịch vụ, Kho thuốc)
+     */
+    public function medicalCatalogsIndex(Request $request): InertiaResponse
+    {
+        $specialties = ChuyenKhoa::withCount('bacSis')->with(['bacSis' => function ($q) {
+            $q->select('MaBacSi', 'MaChuyenKhoa', 'HoTen', 'HocVi', 'TrangThai');
+        }])->orderBy('TenChuyenKhoa', 'asc')->get();
+
+        $services = DichVu::orderBy('TenDichVu', 'asc')->get();
+        $medicines = Thuoc::orderBy('TenThuoc', 'asc')->get();
+
+        return Inertia::render('Admin/MedicalCatalogs', [
+            'specialties' => $specialties,
+            'services' => $services,
+            'medicines' => $medicines,
+            'initialTab' => $request->get('tab', 'specialties'),
+            'filters' => [
+                'specialties' => $request->only(['search', 'status']),
+                'services' => $request->only(['search', 'type', 'status']),
+                'medicines' => $request->only(['search', 'dang_bao_che', 'status']),
+            ],
+        ]);
+    }
+
+    /**
+     * QUẢN LÝ NHÂN SỰ TẬP TRUNG (Đội ngũ Bác sĩ & Nhân viên)
+     */
+    public function staffManagementIndex(Request $request): InertiaResponse
+    {
+        $doctors = BacSi::with('chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa')->orderBy('HoTen', 'asc')->get();
+        $chuyenKhoas = ChuyenKhoa::where('TrangThai', 'HOAT_DONG')->select('MaChuyenKhoa', 'TenChuyenKhoa')->get();
+
+        $staffs = NhanVien::with('taiKhoan:MaTaiKhoan,TenDangNhap,Email,TrangThai')->orderBy('HoTen', 'asc')->get();
+
+        $stats = [
+            'total' => $staffs->count(),
+            'receptionists' => $staffs->where('LoaiNhanVien', 'LE_TAN')->count(),
+            'clsStaff' => $staffs->where('LoaiNhanVien', 'CAN_LAM_SANG')->count(),
+            'withAccount' => $staffs->whereNotNull('MaTaiKhoan')->count(),
+            'withoutAccount' => $staffs->whereNull('MaTaiKhoan')->count(),
+        ];
+
+        return Inertia::render('Admin/StaffManagement', [
+            'doctors' => $doctors,
+            'chuyenKhoas' => $chuyenKhoas,
+            'staffs' => $staffs,
+            'stats' => $stats,
+            'initialTab' => $request->get('tab', 'doctors'),
+            'filters' => [
+                'doctors' => $request->only(['search', 'specialty_id', 'status']),
+                'staffs' => $request->only(['search', 'type', 'status', 'has_account']),
+            ],
+        ]);
+    }
+
     public function servicesStore(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -891,6 +947,20 @@ class AdminController extends Controller
      */
     public function clsMonitorIndex(Request $request): InertiaResponse|JsonResponse
     {
+        $clsData = $this->buildClsMonitorData($request);
+
+        if ($request->expectsJson() || $request->is('api/*')) {
+            return response()->json([
+                'success' => true,
+                'data' => $clsData,
+            ]);
+        }
+
+        return Inertia::render('Admin/ClsMonitor', $clsData);
+    }
+
+    public function buildClsMonitorData(Request $request): array
+    {
         $query = \App\Models\ChiDinhDichVu::query()->with([
             'dichVu',
             'bacSi:MaBacSi,HoTen,HocVi,MaChuyenKhoa',
@@ -1011,7 +1081,7 @@ class AdminController extends Controller
         $perPage = (int)$request->input('per_page', 15);
         $orders = (clone $query)->orderBy('NgayChiDinh', 'desc')->paginate($perPage)->withQueryString();
 
-        $clsData = [
+        return [
             'orders' => $orders,
             'stats' => $stats,
             'charts' => [
@@ -1023,21 +1093,46 @@ class AdminController extends Controller
             'technicians' => $clsTechnicians,
             'filters' => $request->only(['search', 'status', 'type', 'date', 'per_page']),
         ];
-
-        if ($request->expectsJson() || $request->is('api/*')) {
-            return response()->json([
-                'success' => true,
-                'data' => $clsData,
-            ]);
-        }
-
-        return Inertia::render('Admin/ClsMonitor', $clsData);
     }
 
     /**
      * BÁO CÁO & GIÁM SÁT TIẾP ĐÓN - HÀNG CHỜ TOÀN VIỆN (ADMIN RECEPTION ANALYTICS)
      */
     public function receptionAnalytics(Request $request): InertiaResponse|JsonResponse
+    {
+        $data = $this->buildReceptionAnalyticsData($request);
+
+        if ($request->expectsJson() || $request->is('api/*')) {
+            return response()->json(['success' => true, 'data' => $data]);
+        }
+
+        return Inertia::render('Admin/ReceptionAnalytics', $data);
+    }
+
+    /**
+     * GIÁM SÁT VẬN HÀNH TOÀN DIỆN (Tiếp đón & Hàng chờ + Tiến độ Cận lâm sàng)
+     */
+    public function operationsMonitorIndex(Request $request): InertiaResponse|JsonResponse
+    {
+        $receptionData = $this->buildReceptionAnalyticsData($request);
+        $clsData = $this->buildClsMonitorData($request);
+
+        if ($request->expectsJson() || $request->is('api/*')) {
+            return response()->json([
+                'success' => true,
+                'reception' => $receptionData,
+                'cls' => $clsData,
+            ]);
+        }
+
+        return Inertia::render('Admin/OperationsMonitor', [
+            'reception' => $receptionData,
+            'cls' => $clsData,
+            'initialTab' => $request->get('tab', 'reception'),
+        ]);
+    }
+
+    public function buildReceptionAnalyticsData(Request $request): array
     {
         $timeRange = $request->input('time_range', 'all'); // 'all', 'today', 'week', 'month', 'custom'
         $fromDate = $request->input('from_date');
@@ -1243,11 +1338,7 @@ class AdminController extends Controller
             ],
         ];
 
-        if ($request->expectsJson() || $request->is('api/*')) {
-            return response()->json(['success' => true, 'data' => $data]);
-        }
-
-        return Inertia::render('Admin/ReceptionAnalytics', $data);
+        return $data;
     }
 
     /**
