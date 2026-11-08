@@ -24,7 +24,25 @@ use App\Http\Controllers\NhanVienController;
 
 // Public routes
 Route::get('/', function () {
-    return Inertia::render('Welcome');
+    $featuredDoctors = \App\Models\BacSi::whereIn('TrangThai', ['HOAT_DONG', 'DANG_LAM_VIEC'])
+        ->with([
+            'chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa',
+            'lichLamViecs' => function ($q) {
+                $q->whereDate('NgayLamViec', '>=', now()->toDateString())
+                  ->whereIn('TrangThai', ['MO', 'CON_TRONG', 'HOAT_DONG'])
+                  ->orderBy('NgayLamViec', 'asc')
+                  ->with(['caKhams' => function ($cq) {
+                      $cq->whereIn('TrangThai', ['CON_TRONG', 'MO']);
+                  }]);
+            }
+        ])
+        ->orderBy('HoTen', 'asc')
+        ->take(4)
+        ->get();
+
+    return Inertia::render('Welcome', [
+        'featuredDoctors' => $featuredDoctors,
+    ]);
 });
 
 Route::get('/book', [BenhNhanController::class, 'bookAppointmentView'])->name('book');

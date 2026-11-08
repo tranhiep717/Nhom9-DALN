@@ -4,7 +4,12 @@ import { Head, Link, router } from '@inertiajs/react';
 import PublicLayout from '@/Layouts/PublicLayout';
 import { Search, Calendar, FileText, Activity, HeartPulse, Stethoscope, Baby, Smile, Phone, ArrowRight, CheckCircle2 } from 'lucide-react';
 
-export default function Welcome({ auth }: PageProps<{}>) {
+interface WelcomeProps {
+    auth: any;
+    featuredDoctors?: any[];
+}
+
+export default function Welcome({ auth, featuredDoctors = [] }: WelcomeProps) {
     const [searchQuery, setSearchQuery] = useState('');
 
     const handleSearch = (e: React.FormEvent) => {
@@ -166,31 +171,52 @@ export default function Welcome({ auth }: PageProps<{}>) {
                         </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                        {[
-                            { name: 'BS. Nguyễn Văn A', spec: 'Nội tổng quát', exp: '15 năm', ava: 'A' },
-                            { name: 'BS. Trần Thị B', spec: 'Nhi khoa', exp: '10 năm', ava: 'B' },
-                            { name: 'BS. Lê Văn C', spec: 'Tai mũi họng', exp: '12 năm', ava: 'C' },
-                            { name: 'BS. Phạm Thị D', spec: 'Da liễu', exp: '8 năm', ava: 'D' },
-                        ].map((doctor, i) => (
-                            <div key={i} className="bg-white rounded-2xl p-5 shadow-sm hover:shadow-lg border border-gray-100 transition-all group flex flex-col h-full">
-                                <div className="flex items-center gap-4 mb-4">
-                                    <div className="w-16 h-16 rounded-full bg-primary-light flex items-center justify-center text-xl font-bold text-primary shrink-0 group-hover:scale-105 transition-transform">
-                                        {doctor.ava}
+                        {(featuredDoctors.length > 0 ? featuredDoctors : [
+                            { HoTen: 'BS. CK1 Trần Văn Nam', chuyenKhoa: { TenChuyenKhoa: 'Nội tổng quát' }, KinhNghiem: '15 năm', MaBacSi: 140 },
+                            { HoTen: 'ThS. BS Nguyễn Thu Hương', chuyenKhoa: { TenChuyenKhoa: 'Tai Mũi Họng' }, KinhNghiem: '12 năm', MaBacSi: 227 },
+                            { HoTen: 'BS. CK2 Lê Anh Tuấn', chuyenKhoa: { TenChuyenKhoa: 'Cơ Xương Khớp' }, KinhNghiem: '16 năm', MaBacSi: 228 },
+                            { HoTen: 'BS. Hoàng Mai Lan', chuyenKhoa: { TenChuyenKhoa: 'Nhi khoa' }, KinhNghiem: '10 năm', MaBacSi: 229 },
+                        ]).map((doctor: any, i: number) => {
+                            const name = doctor.HoTen || doctor.name || '';
+                            const spec = doctor.chuyenKhoa?.TenChuyenKhoa || doctor.chuyen_khoa?.TenChuyenKhoa || doctor.spec || 'Đa khoa';
+                            const exp = doctor.KinhNghiem || doctor.exp || 'Nhiều năm kinh nghiệm';
+                            const docId = doctor.MaBacSi || doctor.id || 1;
+                            const initial = (name ? name.split(' ').pop()?.charAt(0) : 'B') || 'B';
+                            const schedules = doctor.lich_lam_viecs || doctor.lichLamViecs || [];
+                            const nextLlv = schedules[0];
+
+                            return (
+                                <div key={docId || i} className="bg-white rounded-2xl p-5 shadow-sm hover:shadow-lg border border-gray-100 transition-all group flex flex-col h-full">
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <div className="w-16 h-16 rounded-full bg-primary-light flex items-center justify-center text-xl font-bold text-primary shrink-0 group-hover:scale-105 transition-transform">
+                                            {initial}
+                                        </div>
+                                        <div>
+                                            <h4 className="font-bold text-darkblue text-lg line-clamp-1">{name}</h4>
+                                            <p className="text-sm text-primary font-medium">{spec}</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h4 className="font-bold text-darkblue text-lg line-clamp-1">{doctor.name}</h4>
-                                        <p className="text-sm text-primary font-medium">{doctor.spec}</p>
+                                    <div className="text-sm text-gray-600 mb-6 flex-1 space-y-1">
+                                        <p>• Kinh nghiệm: {exp}</p>
+                                        {nextLlv ? (
+                                            <p className="text-emerald-700 font-semibold text-xs">
+                                                • Lịch gần nhất: {nextLlv.NgayLamViec} ({nextLlv.GioBatDau?.slice(0, 5)} - {nextLlv.GioKetThuc?.slice(0, 5)})
+                                            </p>
+                                        ) : (
+                                            <p>• Lịch khám: Thứ 2 - Thứ 6</p>
+                                        )}
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Link href={`/book?doctor_id=${docId}`} className="w-full block text-center py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-hover transition-colors text-sm shadow-sm">
+                                            Đặt lịch khám
+                                        </Link>
+                                        <Link href={`/doctors/${docId}`} className="w-full block text-center py-1.5 text-xs text-gray-500 hover:text-primary transition-colors">
+                                            Xem lịch chi tiết →
+                                        </Link>
                                     </div>
                                 </div>
-                                <div className="text-sm text-gray-600 mb-6 flex-1">
-                                    <p className="mb-1">• Kinh nghiệm: {doctor.exp}</p>
-                                    <p>• Lịch khám: Thứ 2 - Thứ 6</p>
-                                </div>
-                                <Link href="/book" className="w-full block text-center py-2.5 rounded-xl border border-primary text-primary font-medium hover:bg-primary hover:text-white transition-colors">
-                                    Đặt lịch
-                                </Link>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             </section>

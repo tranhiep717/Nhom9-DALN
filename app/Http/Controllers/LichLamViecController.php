@@ -285,6 +285,10 @@ class LichLamViecController extends Controller
             'TrangThai' => $validated['TrangThai'] ?? 'MO',
         ]);
 
+        if ($schedule->MaBacSi) {
+            $schedule->syncCaKhams();
+        }
+
         // Tự động tạo thông báo gửi tới nhân sự được phân ca
         $targetTaiKhoanId = $maTaiKhoan;
         if (!$targetTaiKhoanId && $maBacSi) {
@@ -395,6 +399,10 @@ class LichLamViecController extends Controller
             'SoLuongTiepNhan' => $validated['SoLuongTiepNhan'] ?? $schedule->SoLuongTiepNhan,
             'TrangThai' => $validated['TrangThai'] ?? $schedule->TrangThai,
         ]);
+
+        if ($schedule->MaBacSi) {
+            $schedule->syncCaKhams();
+        }
 
         return response()->json([
             'success' => true,

@@ -39,6 +39,28 @@ interface DoctorItem {
             GioKetThuc: string;
             TrangThai: string;
         }>;
+        ca_khams?: Array<{
+            MaCaKham: number;
+            GioBatDau: string;
+            GioKetThuc: string;
+            TrangThai: string;
+        }>;
+    }>;
+    lich_lam_viecs?: Array<{
+        MaLichLamViec: number;
+        NgayLamViec: string;
+        caKhams?: Array<{
+            MaCaKham: number;
+            GioBatDau: string;
+            GioKetThuc: string;
+            TrangThai: string;
+        }>;
+        ca_khams?: Array<{
+            MaCaKham: number;
+            GioBatDau: string;
+            GioKetThuc: string;
+            TrangThai: string;
+        }>;
     }>;
 }
 
@@ -148,12 +170,13 @@ export default function Doctors({ auth, doctors = [], chuyenKhoas = [], filters 
                             const title = doctor.HocVi ? `${doctor.HocVi}. ` : 'BS. ';
 
                             // Đếm ca khám khả dụng sắp tới
+                            const schedulesList = doctor.lichLamViecs || doctor.lich_lam_viecs || [];
                             let upcomingSlotsCount = 0;
-                            if (doctor.lichLamViecs) {
-                                doctor.lichLamViecs.forEach((llv) => {
-                                    if (llv.caKhams) upcomingSlotsCount += llv.caKhams.length;
-                                });
-                            }
+                            schedulesList.forEach((llv) => {
+                                const slots = llv.caKhams || llv.ca_khams || [];
+                                upcomingSlotsCount += slots.length;
+                            });
+                            const nextLlv = schedulesList[0];
 
                             return (
                                 <div
@@ -185,10 +208,22 @@ export default function Doctors({ auth, doctors = [], chuyenKhoas = [], filters 
                                             {doctor.MoTa || 'Bác sĩ chuyên khoa uy tín, tận tâm với người bệnh tại Hệ thống Y tế SmartCare.'}
                                         </p>
 
-                                        {upcomingSlotsCount > 0 && (
-                                            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
-                                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                                                <span>Có {upcomingSlotsCount} ca khám đang mở tiếp nhận</span>
+                                        {upcomingSlotsCount > 0 ? (
+                                            <div className="mt-4 pt-3 border-t border-slate-100 space-y-1">
+                                                <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-semibold">
+                                                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                                    <span>Có {upcomingSlotsCount} ca khám đang mở tiếp nhận</span>
+                                                </div>
+                                                {nextLlv && (
+                                                    <p className="text-[11px] text-slate-500 font-medium pl-5.5">
+                                                        Lịch gần nhất: <span className="font-bold text-slate-800">{nextLlv.NgayLamViec}</span>
+                                                    </p>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-1.5 text-xs text-slate-400">
+                                                <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+                                                <span>Lịch khám tuần này đang cập nhật</span>
                                             </div>
                                         )}
                                     </div>

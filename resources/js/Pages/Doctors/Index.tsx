@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import PublicLayout from '@/Layouts/PublicLayout';
-import { Search, MapPin, Star, GraduationCap } from 'lucide-react';
+import { Search, MapPin, Star, GraduationCap, Clock } from 'lucide-react';
 
 interface DoctorItem {
     MaBacSi?: number;
@@ -154,6 +154,19 @@ export default function Doctors({ doctors: initialDoctors, chuyenKhoas = [], fil
                                             <Star className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
                                             <span>Kinh nghiệm: {exp}</span>
                                         </div>
+                                        {((doctor as any).lich_lam_viecs || (doctor as any).lichLamViecs || []).length > 0 ? (
+                                            <div className="flex items-start gap-2 text-emerald-700 text-xs font-semibold pt-1 border-t border-slate-100">
+                                                <Clock className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                                                <span>
+                                                    Lịch gần nhất: {((doctor as any).lich_lam_viecs || (doctor as any).lichLamViecs)[0].NgayLamViec} ({((doctor as any).lich_lam_viecs || (doctor as any).lichLamViecs)[0].GioBatDau?.slice(0, 5)} - {((doctor as any).lich_lam_viecs || (doctor as any).lichLamViecs)[0].GioKetThuc?.slice(0, 5)})
+                                                </span>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-start gap-2 text-slate-500 text-xs pt-1 border-t border-slate-100">
+                                                <Clock className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                                                <span>Lịch khám: Thứ 2 - Thứ 6</span>
+                                            </div>
+                                        )}
                                     </div>
                                     
                                     <div className="flex gap-2">

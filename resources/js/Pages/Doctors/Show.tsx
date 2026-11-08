@@ -89,8 +89,8 @@ export default function DoctorShow({ doctor }: Props) {
         }
     };
 
-    const upcomingSchedules = (doctor.lich_lam_viec || []).filter(
-        (s) => s.TrangThai === 'MO' || s.TrangThai === 'HOAT_DONG'
+    const upcomingSchedules = (doctor.lich_lam_viec || (doctor as any).lich_lam_viecs || []).filter(
+        (s: any) => s.TrangThai === 'MO' || s.TrangThai === 'CON_TRONG' || s.TrangThai === 'HOAT_DONG'
     );
 
     return (
@@ -216,7 +216,7 @@ export default function DoctorShow({ doctor }: Props) {
 
                                 {upcomingSchedules.length > 0 ? (
                                     <div className="space-y-4">
-                                        {upcomingSchedules.map((schedule) => {
+                                        {upcomingSchedules.map((schedule: any) => {
                                             const shifts = schedule.caKhams || schedule.ca_khams || [];
                                             return (
                                                 <div key={schedule.MaLichLamViec} className="p-4 rounded-xl border border-slate-200 hover:border-primary/50 transition-colors">
@@ -232,7 +232,7 @@ export default function DoctorShow({ doctor }: Props) {
 
                                                     {shifts.length > 0 ? (
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                            {shifts.map((shift) => (
+                                                            {shifts.map((shift: any) => (
                                                                 <div key={shift.MaCaKham} className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 text-sm">
                                                                     <div>
                                                                         <span className="font-medium text-gray-800">

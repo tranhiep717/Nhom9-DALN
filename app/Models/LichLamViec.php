@@ -63,4 +63,55 @@ class LichLamViec extends Model
     {
         return $this->hasMany(CaKham::class, 'MaLichLamViec', 'MaLichLamViec');
     }
+
+    /**
+     * Tự động đồng bộ ca khám (CaKham slots) cho lịch làm việc của Bác sĩ
+     */
+    public function syncCaKhams(): void
+    {
+        if (!$this->MaBacSi) {
+            return;
+        }
+
+        $loaiCa = $this->LoaiCa ?? self::normalizeShiftType($this->GioBatDau, $this->GioKetThuc);
+        $totalSlots = $this->SoLuongTiepNhan ?: 30;
+
+        if ($loaiCa === 'ngay' || ($this->GioBatDau <= '08:00:00' && $this->GioKetThuc >= '17:00:00')) {
+            $slotCount = (int) ceil($totalSlots / 2);
+            CaKham::firstOrCreate(
+                [
+                    'MaLichLamViec' => $this->MaLichLamViec,
+                    'GioBatDau' => '08:00:00',
+                    'GioKetThuc' => '12:00:00',
+                ],
+                [
+                    'SoLuongTiepNhan' => $slotCount,
+                    'TrangThai' => 'CON_TRONG',
+                ]
+            );
+            CaKham::firstOrCreate(
+                [
+                    'MaLichLamViec' => $this->MaLichLamViec,
+                    'GioBatDau' => '13:30:00',
+                    'GioKetThuc' => '17:00:00',
+                ],
+                [
+                    'SoLuongTiepNhan' => $slotCount,
+                    'TrangThai' => 'CON_TRONG',
+                ]
+            );
+        } else {
+            CaKham::firstOrCreate(
+                [
+                    'MaLichLamViec' => $this->MaLichLamViec,
+                    'GioBatDau' => $this->GioBatDau,
+                    'GioKetThuc' => $this->GioKetThuc,
+                ],
+                [
+                    'SoLuongTiepNhan' => $totalSlots,
+                    'TrangThai' => 'CON_TRONG',
+                ]
+            );
+        }
+    }
 }

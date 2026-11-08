@@ -26,7 +26,17 @@ class BacSiController extends Controller
      */
     public function index(Request $request)
     {
-        $query = BacSi::query()->with('chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa');
+        $query = BacSi::query()->with([
+            'chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa',
+            'lichLamViecs' => function ($q) {
+                $q->whereDate('NgayLamViec', '>=', now()->toDateString())
+                  ->whereIn('TrangThai', ['MO', 'CON_TRONG', 'HOAT_DONG'])
+                  ->orderBy('NgayLamViec', 'asc')
+                  ->with(['caKhams' => function ($cq) {
+                      $cq->whereIn('TrangThai', ['CON_TRONG', 'MO']);
+                  }]);
+            }
+        ]);
 
         // Mặc định khách công khai chỉ thấy bác sĩ đang hoạt động
         $query->whereIn('TrangThai', ['HOAT_DONG', 'DANG_LAM_VIEC']);
@@ -77,9 +87,10 @@ class BacSiController extends Controller
             'chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa',
             'lichLamViecs' => function ($q) {
                 $q->whereDate('NgayLamViec', '>=', now()->toDateString())
-                  ->where('TrangThai', 'MO')
+                  ->whereIn('TrangThai', ['MO', 'CON_TRONG', 'HOAT_DONG'])
+                  ->orderBy('NgayLamViec', 'asc')
                   ->with(['caKhams' => function ($cq) {
-                      $cq->where('TrangThai', 'CON_TRONG');
+                      $cq->whereIn('TrangThai', ['CON_TRONG', 'MO']);
                   }]);
             }
         ])->whereIn('TrangThai', ['HOAT_DONG', 'DANG_LAM_VIEC']);
@@ -115,9 +126,12 @@ class BacSiController extends Controller
         $doctor = BacSi::with([
             'chuyenKhoa:MaChuyenKhoa,TenChuyenKhoa,MoTa',
             'lichLamViecs' => function ($q) {
-                $q->where('NgayLamViec', '>=', now()->toDateString())
+                $q->whereDate('NgayLamViec', '>=', now()->toDateString())
+                  ->whereIn('TrangThai', ['MO', 'CON_TRONG', 'HOAT_DONG'])
                   ->orderBy('NgayLamViec', 'asc')
-                  ->with('caKhams');
+                  ->with(['caKhams' => function ($cq) {
+                      $cq->whereIn('TrangThai', ['CON_TRONG', 'MO']);
+                  }]);
             },
         ])->find($id);
 
@@ -143,6 +157,7 @@ class BacSiController extends Controller
             'TrangThai' => $doctor->TrangThai,
             'chuyen_khoa' => $doctor->chuyenKhoa,
             'lich_lam_viec' => $doctor->lichLamViecs,
+            'lich_lam_viecs' => $doctor->lichLamViecs,
         ];
 
         if ($request->expectsJson() || $request->is('api/*')) {

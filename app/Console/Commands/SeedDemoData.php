@@ -1301,7 +1301,7 @@ class SeedDemoData extends Command
                             'GioBatDau' => '08:00:00',
                             'GioKetThuc' => '17:00:00',
                             'SoLuongTiepNhan' => 30,
-                            'TrangThai' => 'CON_TRONG',
+                            'TrangThai' => 'MO',
                             'LoaiCa' => 'ngay',
                         ]
                     );
@@ -1347,7 +1347,7 @@ class SeedDemoData extends Command
                         'GioBatDau' => '08:00:00',
                         'GioKetThuc' => '17:00:00',
                         'SoLuongTiepNhan' => 40,
-                        'TrangThai' => 'CON_TRONG',
+                        'TrangThai' => 'MO',
                         'LoaiCa' => 'ngay',
                     ]
                 );
@@ -1363,7 +1363,7 @@ class SeedDemoData extends Command
                         'GioBatDau' => '07:30:00',
                         'GioKetThuc' => '12:30:00',
                         'SoLuongTiepNhan' => 50,
-                        'TrangThai' => 'CON_TRONG',
+                        'TrangThai' => 'MO',
                         'LoaiCa' => 'sang',
                     ]
                 );
@@ -1379,7 +1379,7 @@ class SeedDemoData extends Command
                         'GioBatDau' => '12:30:00',
                         'GioKetThuc' => '17:30:00',
                         'SoLuongTiepNhan' => 50,
-                        'TrangThai' => 'CON_TRONG',
+                        'TrangThai' => 'MO',
                         'LoaiCa' => 'chieu',
                     ]
                 );
