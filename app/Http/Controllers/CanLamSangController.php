@@ -224,14 +224,14 @@ class CanLamSangController extends Controller
         $schedules = $query->orderBy('NgayLamViec', 'asc')->orderBy('GioBatDau', 'asc')->get();
 
         // Đơn chờ tôi xác nhận đổi ca
-        $requestsForMe = \App\Models\DonTuNhanSu::with(['taiKhoan.vaiTro', 'lichLamViec', 'lichDoiSang'])
+        $requestsForMe = \App\Models\DonTuNhanSu::with(['taiKhoan.vaiTro', 'taiKhoan.nhanVien', 'taiKhoan.bacSi', 'lichLamViec', 'lichDoiSang'])
             ->where('TaiKhoanDoiCung', $user->MaTaiKhoan)
             ->where('TrangThai', 'CHO_DONG_NGHIEP_XAC_NHAN')
             ->orderBy('created_at', 'desc')
             ->get();
 
         // Đơn cá nhân của tôi
-        $myRequests = \App\Models\DonTuNhanSu::with(['taiKhoanDoiCung', 'lichLamViec', 'lichDoiSang'])
+        $myRequests = \App\Models\DonTuNhanSu::with(['taiKhoanDoiCung.nhanVien', 'taiKhoanDoiCung.bacSi', 'lichLamViec', 'lichDoiSang'])
             ->where('MaTaiKhoan', $user->MaTaiKhoan)
             ->orderBy('created_at', 'desc')
             ->limit(30)

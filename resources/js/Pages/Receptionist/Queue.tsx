@@ -119,6 +119,8 @@ interface Visit {
     caKham?: Shift;
     bac_si?: Doctor;
     bacSi?: Doctor;
+    unpaid_debt?: number;
+    unpaidDebt?: number;
 }
 
 interface Appointment {
@@ -264,7 +266,7 @@ export default function Queue({
 
     // Processing states
     const [processingId, setProcessingId] = useState<number | null>(null);
-    const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+    const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'warning'; message: string } | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
 
     // Modal tiếp nhận trực tiếp (Walk-in P3)
@@ -742,11 +744,15 @@ export default function Queue({
                     <div className={`p-4 rounded-xl flex items-center justify-between shadow-sm transition-all ${
                         notification.type === 'success' 
                             ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' 
+                            : notification.type === 'warning'
+                            ? 'bg-amber-50 border border-amber-200 text-amber-800'
                             : 'bg-rose-50 border border-rose-200 text-rose-800'
                     }`}>
                         <div className="flex items-center gap-3">
                             {notification.type === 'success' ? (
                                 <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                            ) : notification.type === 'warning' ? (
+                                <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
                             ) : (
                                 <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
                             )}

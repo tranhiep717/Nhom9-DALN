@@ -154,6 +154,14 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
     const [submitting, setSubmitting] = useState(false);
     const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+    // Tự động đóng Toast notification sau 5 giây
+    useEffect(() => {
+        if (feedback) {
+            const timer = setTimeout(() => setFeedback(null), 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [feedback]);
+
     // Modal thêm ca khám
     const [caModalOpen, setCaModalOpen] = useState(false);
     const [selectedScheduleForCa, setSelectedScheduleForCa] = useState<ScheduleItem | null>(null);
@@ -252,12 +260,21 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
         const selected = fixedShiftOptions.find((item) => item.key === shiftKey);
         if (!selected) return;
 
+        let start = selected.start;
+        let end = selected.end;
+
+        // Tự động gán khung giờ chuẩn theo từng vai trò (Lễ tân ca sáng 07:00-12:00, chiều 12:30-17:30)
+        if (activeScheduleTab === 'reception') {
+            if (shiftKey === 'sang') { start = '07:00'; end = '12:00'; }
+            else if (shiftKey === 'chieu') { start = '12:30'; end = '17:30'; }
+        }
+
         setSelectedShiftKey(shiftKey);
         setFormData((prev) => ({
             ...prev,
             LoaiCa: shiftKey === 'custom' ? 'custom' : shiftKey,
-            GioBatDau: selected.start || prev.GioBatDau,
-            GioKetThuc: selected.end || prev.GioKetThuc,
+            GioBatDau: start || prev.GioBatDau,
+            GioKetThuc: end || prev.GioKetThuc,
         }));
     };
 
@@ -498,18 +515,30 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
                     </div>
                 </div>
 
+                {/* Floating Toast Notification cho Admin */}
                 {feedback && (
-                    <div className={`p-4 rounded-2xl border flex items-center gap-3 text-sm ${
-                        feedback.type === 'success' 
-                            ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
-                            : 'bg-rose-50 border-rose-200 text-rose-800'
-                    }`}>
-                        {feedback.type === 'success' ? (
-                            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                        ) : (
-                            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-                        )}
-                        <span>{feedback.message}</span>
+                    <div className="fixed top-6 right-6 z-50 max-w-md animate-in slide-in-from-top-4 fade-in duration-200">
+                        <div className={`p-4 rounded-2xl shadow-xl border flex items-start gap-3 text-sm backdrop-blur-md ${
+                            feedback.type === 'success' 
+                                ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-900/20' 
+                                : 'bg-rose-600 text-white border-rose-500 shadow-rose-900/20'
+                        }`}>
+                            {feedback.type === 'success' ? (
+                                <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
+                            ) : (
+                                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                            )}
+                            <div className="flex-1 font-semibold leading-relaxed">
+                                {feedback.message}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setFeedback(null)}
+                                className="text-white/80 hover:text-white p-0.5 rounded-lg ml-2"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
                 )}
 
@@ -748,7 +777,8 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
                                                         // Lọc theo vai trò tab, bộ lọc dropdown và từ khóa tìm kiếm
                                                         const items = scheduleList.filter((sch) => {
                                                             const matchDate = sch.NgayLamViec === date;
-                                                            const matchShift = (sch.LoaiCa || 'custom').toLowerCase() === shiftKey;
+                                                            const schLoaiCa = (sch.LoaiCa || 'custom').toLowerCase();
+                                                            const matchShift = schLoaiCa === shiftKey || (schLoaiCa === 'ngay' && (shiftKey === 'sang' || shiftKey === 'chieu'));
                                                             if (!matchDate || !matchShift) return false;
 
                                                             // Lọc theo dropdown

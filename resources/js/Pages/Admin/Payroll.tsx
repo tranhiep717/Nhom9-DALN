@@ -111,6 +111,12 @@ interface StaffRequest {
         vaiTro?: {
             TenVaiTro: string;
         };
+        bacSi?: {
+            HoTen: string;
+        };
+        nhanVien?: {
+            HoTen: string;
+        };
     };
     taiKhoanDoiCung?: {
         MaTaiKhoan: number;
@@ -119,9 +125,23 @@ interface StaffRequest {
         vaiTro?: {
             TenVaiTro: string;
         };
+        bacSi?: {
+            HoTen: string;
+        };
+        nhanVien?: {
+            HoTen: string;
+        };
     };
     lichLamViec?: {
         CaLamViec?: string;
+        LoaiCa?: string;
+        GioBatDau?: string;
+        GioKetThuc?: string;
+    };
+    lichDoiSang?: {
+        NgayLamViec?: string;
+        CaLamViec?: string;
+        LoaiCa?: string;
         GioBatDau?: string;
         GioKetThuc?: string;
     };
@@ -749,53 +769,84 @@ export default function AdminPayroll({
                                     <tr>
                                         <th className="px-5 py-3 text-left text-xs font-bold uppercase text-slate-500">Nhân sự</th>
                                         <th className="px-5 py-3 text-left text-xs font-bold uppercase text-slate-500">Loại đơn</th>
-                                        <th className="px-5 py-3 text-left text-xs font-bold uppercase text-slate-500">Ngày ca trực</th>
+                                        <th className="px-5 py-3 text-left text-xs font-bold uppercase text-slate-500">Ca trực & Khung giờ</th>
                                         <th className="px-5 py-3 text-left text-xs font-bold uppercase text-slate-500">Số phút xin</th>
                                         <th className="px-5 py-3 text-left text-xs font-bold uppercase text-slate-500">Số phút duyệt</th>
-                                        <th className="px-5 py-3 text-left text-xs font-bold uppercase text-slate-500">Lý do</th>
+                                        <th className="px-5 py-3 text-left text-xs font-bold uppercase text-slate-500">Lý do & Chi tiết đổi</th>
                                         <th className="px-5 py-3 text-left text-xs font-bold uppercase text-slate-500">Trạng thái</th>
                                         <th className="px-5 py-3 text-right text-xs font-bold uppercase text-slate-500">Hành động</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {staffRequests.length > 0 ? (
-                                        staffRequests.map((req) => (
-                                            <tr key={req.MaDonTu} className="hover:bg-slate-50">
-                                                <td className="px-5 py-4">
-                                                    <div className="font-semibold text-slate-900">
-                                                        {req.taiKhoan?.name || req.taiKhoan?.TenDangNhap || `TK #${req.MaTaiKhoan}`}
-                                                    </div>
-                                                    <div className="text-xs text-slate-500">
-                                                        {req.taiKhoan?.vaiTro?.TenVaiTro === 'BAC_SI' ? 'Bác sĩ' : req.taiKhoan?.vaiTro?.TenVaiTro === 'LE_TAN' ? 'Lễ tân' : 'Cận lâm sàng'}
-                                                    </div>
-                                                </td>
-                                                <td className="px-5 py-4 text-sm font-bold text-slate-900">
-                                                    {formatLoaiDon(req.LoaiDon)}
-                                                </td>
-                                                <td className="px-5 py-4 text-sm text-slate-600 font-mono">
-                                                    {req.NgayApDung}
-                                                </td>
-                                                <td className="px-5 py-4 text-sm font-semibold text-slate-700">
-                                                    {req.SoPhutXinPhep > 0 ? `${req.SoPhutXinPhep} phút` : '--'}
-                                                </td>
-                                                <td className="px-5 py-4 text-sm font-bold text-indigo-600">
-                                                    {req.TrangThai === 'DA_DUYET' ? `${req.SoPhutDuocDuyet} phút` : '--'}
-                                                </td>
-                                                <td className="px-5 py-4 text-sm text-slate-600 max-w-xs">
-                                                    <div>{req.LyDo}</div>
-                                                    {req.LoaiDon === 'DOI_CA' && (
-                                                        <div className="mt-1 p-2 rounded-lg bg-indigo-50 border border-indigo-100 text-[11px] text-indigo-900">
-                                                            <div className="font-semibold">Đổi với đồng nghiệp:</div>
-                                                            <div>{req.taiKhoanDoiCung?.name || req.taiKhoanDoiCung?.TenDangNhap || `TK #${req.TaiKhoanDoiCung}`}</div>
-                                                            {req.GhiChuDongNghiep && (
-                                                                <div className="text-slate-500 italic mt-0.5">"{req.GhiChuDongNghiep}"</div>
-                                                            )}
+                                        staffRequests.map((req) => {
+                                            const staffName = req.taiKhoan?.bacSi?.HoTen 
+                                                || req.taiKhoan?.nhanVien?.HoTen 
+                                                || req.taiKhoan?.name 
+                                                || req.taiKhoan?.TenDangNhap 
+                                                || `TK #${req.MaTaiKhoan}`;
+                                            const colleagueName = req.taiKhoanDoiCung?.bacSi?.HoTen 
+                                                || req.taiKhoanDoiCung?.nhanVien?.HoTen 
+                                                || req.taiKhoanDoiCung?.name 
+                                                || req.taiKhoanDoiCung?.TenDangNhap 
+                                                || (req.TaiKhoanDoiCung ? `TK #${req.TaiKhoanDoiCung}` : '--');
+
+                                            return (
+                                                <tr key={req.MaDonTu} className="hover:bg-slate-50">
+                                                    <td className="px-5 py-4">
+                                                        <div className="font-semibold text-slate-900">
+                                                            {staffName}
                                                         </div>
-                                                    )}
-                                                    {req.GhiChuAdmin && (
-                                                        <div className="text-xs text-indigo-600 mt-1">Admin: {req.GhiChuAdmin}</div>
-                                                    )}
-                                                </td>
+                                                        <div className="text-xs text-slate-500">
+                                                            {req.taiKhoan?.vaiTro?.TenVaiTro === 'BAC_SI' ? 'Bác sĩ' : req.taiKhoan?.vaiTro?.TenVaiTro === 'LE_TAN' ? 'Lễ tân' : 'Cận lâm sàng'}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-5 py-4 text-sm font-bold text-slate-900">
+                                                        {formatLoaiDon(req.LoaiDon)}
+                                                    </td>
+                                                    <td className="px-5 py-4 text-sm text-slate-600 font-mono">
+                                                        <div className="font-bold text-slate-900">{req.NgayApDung}</div>
+                                                        {req.lichLamViec ? (
+                                                            <div className="text-xs text-indigo-700 font-sans mt-0.5 font-medium">
+                                                                {req.lichLamViec.CaLamViec || req.lichLamViec.LoaiCa ? `Ca ${req.lichLamViec.CaLamViec || req.lichLamViec.LoaiCa}: ` : ''}
+                                                                {req.lichLamViec.GioBatDau?.slice(0, 5)} - {req.lichLamViec.GioKetThuc?.slice(0, 5)}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="text-xs text-slate-400 font-sans mt-0.5">--</div>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-5 py-4 text-sm font-semibold text-slate-700">
+                                                        {req.SoPhutXinPhep > 0 ? `${req.SoPhutXinPhep} phút` : '--'}
+                                                    </td>
+                                                    <td className="px-5 py-4 text-sm font-bold text-indigo-600">
+                                                        {req.TrangThai === 'DA_DUYET' ? `${req.SoPhutDuocDuyet} phút` : '--'}
+                                                    </td>
+                                                    <td className="px-5 py-4 text-sm text-slate-600 max-w-xs">
+                                                        <div>{req.LyDo}</div>
+                                                        {req.LoaiDon === 'DOI_CA' && (
+                                                            <div className="mt-1.5 p-2.5 rounded-xl bg-indigo-50 border border-indigo-100 text-[11px] text-indigo-950 space-y-1">
+                                                                <div className="font-bold flex items-center justify-between">
+                                                                    <span>Đổi với: {colleagueName}</span>
+                                                                    {req.XacNhanDongNghiep ? (
+                                                                        <span className="text-emerald-700 font-bold">✓ Đồng nghiệp OK</span>
+                                                                    ) : (
+                                                                        <span className="text-amber-700 font-bold">⏳ Chờ xác nhận</span>
+                                                                    )}
+                                                                </div>
+                                                                {req.lichDoiSang && (
+                                                                    <div className="text-slate-600 text-[10px]">
+                                                                        Ca nhận đổi: {req.lichDoiSang.NgayLamViec} ({req.lichDoiSang.GioBatDau?.slice(0, 5)} - {req.lichDoiSang.GioKetThuc?.slice(0, 5)})
+                                                                    </div>
+                                                                )}
+                                                                {req.GhiChuDongNghiep && (
+                                                                    <div className="text-slate-500 italic mt-0.5">"{req.GhiChuDongNghiep}"</div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        {req.GhiChuAdmin && (
+                                                            <div className="text-xs text-indigo-600 mt-1">Admin: {req.GhiChuAdmin}</div>
+                                                        )}
+                                                    </td>
                                                 <td className="px-5 py-4">
                                                     <span
                                                         className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${
@@ -852,8 +903,9 @@ export default function AdminPayroll({
                                                     )}
                                                 </td>
                                             </tr>
-                                        ))
-                                    ) : (
+                                        );
+                                    })
+                                ) : (
                                         <tr>
                                             <td colSpan={8} className="px-5 py-8 text-center text-sm text-slate-500">
                                                 Không có đơn từ nào cần xử lý.
@@ -888,20 +940,38 @@ export default function AdminPayroll({
                         </div>
 
                         <form onSubmit={handleConfirmRequestAction} className="p-6 space-y-4">
-                            <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-1">
-                                <div>Nhân sự: <strong>{selectedRequest.taiKhoan?.name || selectedRequest.taiKhoan?.TenDangNhap}</strong></div>
+                            <div className="p-3.5 bg-slate-50 rounded-2xl text-xs space-y-1.5 border border-slate-200">
+                                <div>Nhân sự: <strong>{selectedRequest.taiKhoan?.bacSi?.HoTen || selectedRequest.taiKhoan?.nhanVien?.HoTen || selectedRequest.taiKhoan?.name || selectedRequest.taiKhoan?.TenDangNhap}</strong></div>
                                 <div>Loại đơn: <strong>{formatLoaiDon(selectedRequest.LoaiDon)}</strong></div>
                                 <div>Ngày áp dụng: <strong>{selectedRequest.NgayApDung}</strong></div>
-                                <div>Lý do: <em>{selectedRequest.LyDo}</em></div>
+                                {selectedRequest.lichLamViec && (
+                                    <div className="text-indigo-700 font-medium">
+                                        Khung giờ ca: <strong>{selectedRequest.lichLamViec.GioBatDau?.slice(0, 5)} - {selectedRequest.lichLamViec.GioKetThuc?.slice(0, 5)}</strong>
+                                        {selectedRequest.lichLamViec.CaLamViec || selectedRequest.lichLamViec.LoaiCa ? ` (${selectedRequest.lichLamViec.CaLamViec || selectedRequest.lichLamViec.LoaiCa})` : ''}
+                                    </div>
+                                )}
+                                {selectedRequest.LoaiDon === 'DOI_CA' && selectedRequest.taiKhoanDoiCung && (
+                                    <div className="text-indigo-950 bg-indigo-50 p-2 rounded-xl mt-1 space-y-0.5">
+                                        <div>Đồng nghiệp đổi cùng: <strong>{selectedRequest.taiKhoanDoiCung.bacSi?.HoTen || selectedRequest.taiKhoanDoiCung.nhanVien?.HoTen || selectedRequest.taiKhoanDoiCung.name || selectedRequest.taiKhoanDoiCung.TenDangNhap}</strong></div>
+                                        <div>
+                                            Xác nhận đồng nghiệp: {selectedRequest.XacNhanDongNghiep ? (
+                                                <span className="text-emerald-700 font-bold">✓ Đã xác nhận đồng ý</span>
+                                            ) : (
+                                                <span className="text-amber-700 font-bold">⏳ Chờ xác nhận</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                                <div>Lý do xin phép: <em>{selectedRequest.LyDo}</em></div>
                             </div>
 
                             {approvalAction === 'approve' && (selectedRequest.LoaiDon === 'DI_MUON' || selectedRequest.LoaiDon === 'VE_SOM') && (
                                 <div>
                                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                                        Số phút phê duyệt tối đa
+                                        Số phút phê duyệt tối đa (tối đa 90p)
                                     </label>
                                     <div className="flex items-center gap-2 mb-2">
-                                        {[15, 30, 45, 60, selectedRequest.SoPhutXinPhep].filter((v, i, a) => a.indexOf(v) === i).map((m) => (
+                                        {[15, 30, 45, 60, 90, selectedRequest.SoPhutXinPhep].filter((v, i, a) => a.indexOf(v) === i && v <= 90 && v > 0).map((m) => (
                                             <button
                                                 key={m}
                                                 type="button"
@@ -919,13 +989,13 @@ export default function AdminPayroll({
                                     <input
                                         type="number"
                                         min={0}
-                                        max={240}
+                                        max={90}
                                         value={approvedMinutes}
-                                        onChange={(e) => setApprovedMinutes(Number(e.target.value))}
-                                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+                                        onChange={(e) => setApprovedMinutes(Math.min(90, Math.max(0, Number(e.target.value))))}
+                                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-200 focus:outline-none font-medium"
                                     />
                                     <p className="text-[11px] text-slate-500 mt-1">
-                                        Nhân sự được miễn phạt nếu quẹt thẻ trong giới hạn {approvedMinutes} phút. Vượt quá sẽ phạt phần thừa.
+                                        Nhân sự được miễn phạt nếu quẹt thẻ trong giới hạn {approvedMinutes} phút (tối đa 90 phút). Vượt quá sẽ phạt phần thừa.
                                     </p>
                                 </div>
                             )}

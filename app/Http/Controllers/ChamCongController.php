@@ -8,6 +8,7 @@ use App\Models\ChamCong;
 use App\Models\DonTuNhanSu;
 use App\Models\LichLamViec;
 use App\Models\TaiKhoan;
+use App\Models\ThongBao;
 use App\Services\ChamCongPolicy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -109,7 +110,17 @@ class ChamCongController extends Controller
 
         // Danh sách đơn từ nhân sự tháng này (hoặc đang chờ xử lý)
         $requests = DonTuNhanSu::query()
-            ->with(['taiKhoan.vaiTro', 'taiKhoan.bacSi.chuyenKhoa', 'taiKhoanDoiCung.vaiTro', 'taiKhoanDoiCung.bacSi.chuyenKhoa', 'adminDuyet', 'lichLamViec', 'lichDoiSang'])
+            ->with([
+                'taiKhoan.vaiTro',
+                'taiKhoan.bacSi.chuyenKhoa',
+                'taiKhoan.nhanVien',
+                'taiKhoanDoiCung.vaiTro',
+                'taiKhoanDoiCung.bacSi.chuyenKhoa',
+                'taiKhoanDoiCung.nhanVien',
+                'adminDuyet',
+                'lichLamViec',
+                'lichDoiSang',
+            ])
             ->where(function ($q) use ($month) {
                 $q->whereIn('TrangThai', ['CHO_DUYET', 'CHO_ADMIN_DUYET', 'CHO_DONG_NGHIEP_XAC_NHAN'])
                   ->orWhere('NgayApDung', 'like', "$month%");
@@ -179,14 +190,14 @@ class ChamCongController extends Controller
             ->first();
 
         // Đơn từ cá nhân của bác sĩ
-        $myRequests = DonTuNhanSu::with(['taiKhoanDoiCung.bacSi', 'lichLamViec', 'lichDoiSang'])
+        $myRequests = DonTuNhanSu::with(['taiKhoanDoiCung.bacSi', 'taiKhoanDoiCung.nhanVien', 'lichLamViec', 'lichDoiSang'])
             ->where('MaTaiKhoan', $user->MaTaiKhoan)
             ->orderBy('created_at', 'desc')
             ->limit(30)
             ->get();
 
         // Đơn đồng nghiệp xin đổi ca gửi tới bác sĩ này
-        $requestsForMe = DonTuNhanSu::with(['taiKhoan.vaiTro', 'taiKhoan.bacSi.chuyenKhoa', 'lichLamViec', 'lichDoiSang'])
+        $requestsForMe = DonTuNhanSu::with(['taiKhoan.vaiTro', 'taiKhoan.bacSi.chuyenKhoa', 'taiKhoan.nhanVien', 'lichLamViec', 'lichDoiSang'])
             ->where('TaiKhoanDoiCung', $user->MaTaiKhoan)
             ->where('TrangThai', 'CHO_DONG_NGHIEP_XAC_NHAN')
             ->orderBy('created_at', 'desc')
@@ -236,13 +247,13 @@ class ChamCongController extends Controller
             ->orderBy('NgayChamCong', 'desc')
             ->get();
 
-        $myRequests = DonTuNhanSu::with(['taiKhoanDoiCung', 'lichLamViec', 'lichDoiSang'])
+        $myRequests = DonTuNhanSu::with(['taiKhoanDoiCung.bacSi', 'taiKhoanDoiCung.nhanVien', 'lichLamViec', 'lichDoiSang'])
             ->where('MaTaiKhoan', $user->MaTaiKhoan)
             ->orderBy('created_at', 'desc')
             ->limit(30)
             ->get();
 
-        $requestsForMe = DonTuNhanSu::with(['taiKhoan.vaiTro', 'lichLamViec', 'lichDoiSang'])
+        $requestsForMe = DonTuNhanSu::with(['taiKhoan.vaiTro', 'taiKhoan.nhanVien', 'taiKhoan.bacSi', 'lichLamViec', 'lichDoiSang'])
             ->where('TaiKhoanDoiCung', $user->MaTaiKhoan)
             ->where('TrangThai', 'CHO_DONG_NGHIEP_XAC_NHAN')
             ->orderBy('created_at', 'desc')
@@ -637,13 +648,45 @@ class ChamCongController extends Controller
 
         $validated = $request->validate([
             'LoaiDon' => 'required|in:DOI_CA,DI_MUON,VE_SOM,NGHI_PHEP',
-            'NgayApDung' => 'required|date',
+            'NgayApDung' => ['required', 'date', 'after_or_equal:today'],
             'MaLichLamViec' => 'nullable|integer',
-            'SoPhutXinPhep' => 'nullable|integer|min:0|max:480',
+            'SoPhutXinPhep' => 'nullable|integer|min:0|max:90',
             'MaLichDoiSang' => 'nullable|integer',
             'TaiKhoanDoiCung' => 'nullable|integer',
             'LyDo' => 'required|string|max:1000',
+        ], [
+            'NgayApDung.after_or_equal' => 'Không thể gửi đơn xin phép cho ngày trong quá khứ.',
+            'SoPhutXinPhep.max' => 'Số phút xin phép tối đa là 90 phút. Nếu nghỉ dài hơn, vui lòng làm đơn Đổi ca hoặc Nghỉ phép.',
+            'LyDo.required' => 'Vui lòng nhập lý do cụ thể.',
         ]);
+
+        // Kiểm tra thời điểm diễn ra ca trực để chặn đổi ca / đi muộn khi ca đã chạy hoặc sắp bắt đầu
+        if (!empty($validated['MaLichLamViec'])) {
+            $schedule = LichLamViec::find($validated['MaLichLamViec']);
+            if ($schedule) {
+                $now = now();
+                $shiftStart = \Carbon\Carbon::parse($schedule->NgayLamViec . ' ' . $schedule->GioBatDau);
+                $shiftEnd = \Carbon\Carbon::parse($schedule->NgayLamViec . ' ' . $schedule->GioKetThuc);
+
+                if ($now->greaterThanOrEqualTo($shiftEnd)) {
+                    $msg = 'Không thể tạo đơn cho ca trực đã kết thúc.';
+                    if ($request->header('X-Inertia')) {
+                        return redirect()->back()->withErrors(['message' => $msg]);
+                    }
+                    return response()->json(['success' => false, 'message' => $msg], 422);
+                }
+
+                // Với đơn Đổi ca hoặc Đi muộn: Không được gửi khi ca đã bắt đầu hoặc trước giờ ca dưới 15 phút
+                if (in_array($validated['LoaiDon'], ['DOI_CA', 'DI_MUON']) && $now->greaterThanOrEqualTo($shiftStart->copy()->subMinutes(15))) {
+                    $actionName = $validated['LoaiDon'] === 'DOI_CA' ? 'đổi ca' : 'xin đi muộn';
+                    $msg = "Không thể {$actionName} khi ca trực đã diễn ra hoặc sắp bắt đầu trong vòng 15 phút.";
+                    if ($request->header('X-Inertia')) {
+                        return redirect()->back()->withErrors(['message' => $msg]);
+                    }
+                    return response()->json(['success' => false, 'message' => $msg], 422);
+                }
+            }
+        }
 
         if ($validated['LoaiDon'] === 'DOI_CA') {
             if (empty($validated['TaiKhoanDoiCung'])) {
@@ -934,13 +977,13 @@ class ChamCongController extends Controller
 
         $schedules = $query->orderBy('NgayLamViec', 'asc')->orderBy('GioBatDau', 'asc')->get();
 
-        $requestsForMe = DonTuNhanSu::with(['taiKhoan.vaiTro', 'lichLamViec', 'lichDoiSang'])
+        $requestsForMe = DonTuNhanSu::with(['taiKhoan.vaiTro', 'taiKhoan.nhanVien', 'taiKhoan.bacSi', 'lichLamViec', 'lichDoiSang'])
             ->where('TaiKhoanDoiCung', $user->MaTaiKhoan)
             ->where('TrangThai', 'CHO_DONG_NGHIEP_XAC_NHAN')
             ->orderBy('created_at', 'desc')
             ->get();
 
-        $myRequests = DonTuNhanSu::with(['taiKhoanDoiCung', 'lichLamViec', 'lichDoiSang'])
+        $myRequests = DonTuNhanSu::with(['taiKhoanDoiCung.bacSi', 'taiKhoanDoiCung.nhanVien', 'lichLamViec', 'lichDoiSang'])
             ->where('MaTaiKhoan', $user->MaTaiKhoan)
             ->orderBy('created_at', 'desc')
             ->limit(30)

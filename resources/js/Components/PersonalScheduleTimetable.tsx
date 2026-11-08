@@ -61,6 +61,10 @@ export interface PeerRequestItem {
                 TenChuyenKhoa: string;
             };
         };
+        nhanVien?: {
+            HoTen: string;
+            ChucVu?: string;
+        };
     };
     taiKhoanDoiCung?: any;
     lichLamViec?: ScheduleItem;
@@ -110,6 +114,43 @@ export default function PersonalScheduleTimetable({
     const [modalLoaiDon, setModalLoaiDon] = useState<'DI_MUON' | 'VE_SOM' | 'DOI_CA' | 'NGHI_PHEP'>('DOI_CA');
     const [modalDate, setModalDate] = useState<string>(todayStr);
     const [modalScheduleId, setModalScheduleId] = useState<number | undefined>(undefined);
+    const [modalSelectedSchedule, setModalSelectedSchedule] = useState<ScheduleItem | undefined>(undefined);
+
+    // Kiểm tra trạng thái thời gian của ca trực (Quá khứ, Đang diễn ra, Chưa bắt đầu)
+    const checkShiftTimeStatus = (sch: ScheduleItem) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const now = new Date();
+
+        if (sch.NgayLamViec < today) {
+            return { isPast: true, isOngoing: false, isEnded: true, label: 'Đã kết thúc' };
+        }
+
+        if (sch.NgayLamViec > today) {
+            return { isPast: false, isOngoing: false, isEnded: false, label: 'Sắp tới' };
+        }
+
+        // Hôm nay: so khớp giờ bắt đầu & kết thúc
+        const [startH, startM] = (sch.GioBatDau || '00:00').slice(0, 5).split(':').map(Number);
+        const [endH, endM] = (sch.GioKetThuc || '23:59').slice(0, 5).split(':').map(Number);
+
+        const startTime = new Date();
+        startTime.setHours(startH, startM, 0, 0);
+
+        const endTime = new Date();
+        endTime.setHours(endH, endM, 0, 0);
+
+        if (now >= endTime) {
+            return { isPast: true, isOngoing: false, isEnded: true, label: 'Đã kết thúc' };
+        }
+
+        // 15 phút trước giờ bắt đầu hoặc đang trong ca
+        const cutoffTime = new Date(startTime.getTime() - 15 * 60 * 1000);
+        if (now >= cutoffTime) {
+            return { isPast: false, isOngoing: true, isEnded: false, label: 'Đang trực' };
+        }
+
+        return { isPast: false, isOngoing: false, isEnded: false, label: 'Chưa bắt đầu' };
+    };
 
     // State xử lý xác nhận đổi ca
     const [processingRequestId, setProcessingRequestId] = useState<number | null>(null);
@@ -206,6 +247,7 @@ export default function PersonalScheduleTimetable({
         setModalLoaiDon('DOI_CA');
         setModalDate(sch.NgayLamViec);
         setModalScheduleId(sch.MaLichLamViec);
+        setModalSelectedSchedule(sch);
         setModalOpen(true);
     };
 
@@ -213,6 +255,7 @@ export default function PersonalScheduleTimetable({
         setModalLoaiDon(type);
         setModalDate(sch.NgayLamViec);
         setModalScheduleId(sch.MaLichLamViec);
+        setModalSelectedSchedule(sch);
         setModalOpen(true);
     };
 
@@ -263,6 +306,7 @@ export default function PersonalScheduleTimetable({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {requestsForMe.map((req) => {
                             const senderName = req.taiKhoan?.bacSi?.HoTen 
+                                || req.taiKhoan?.nhanVien?.HoTen
                                 || req.taiKhoan?.name 
                                 || req.taiKhoan?.TenDangNhap 
                                 || `TK #${req.MaTaiKhoan}`;
@@ -278,7 +322,8 @@ export default function PersonalScheduleTimetable({
                                             <div>
                                                 <div className="font-bold text-slate-900 text-sm">{senderName}</div>
                                                 <div className="text-[11px] text-slate-500">
-                                                    {req.taiKhoan?.bacSi?.chuyenKhoa?.TenChuyenKhoa || 'Đồng nghiệp cùng phân hệ'}
+                                                    {req.taiKhoan?.bacSi?.chuyenKhoa?.TenChuyenKhoa 
+                                                        || (req.taiKhoan?.vaiTro?.TenVaiTro === 'LE_TAN' ? 'Lễ tân' : req.taiKhoan?.vaiTro?.TenVaiTro === 'NHAN_VIEN_CAN_LAM_SANG' ? 'Kỹ thuật viên CLS' : 'Đồng nghiệp')}
                                                 </div>
                                             </div>
                                         </div>
@@ -287,13 +332,43 @@ export default function PersonalScheduleTimetable({
                                         </span>
                                     </div>
 
-                                    <div className="bg-slate-50 p-2.5 rounded-xl text-xs space-y-1 text-slate-700">
-                                        <div className="flex items-center gap-1.5 font-medium">
-                                            <CalendarIcon className="w-3.5 h-3.5 text-indigo-500" />
-                                            <span>Ngày ca trực đổi: <strong className="text-slate-900">{req.NgayApDung}</strong></span>
+                                    <div className="bg-slate-50 p-3 rounded-2xl text-xs space-y-2 text-slate-700 border border-slate-100">
+                                        <div className="space-y-1">
+                                            <div className="text-[11px] font-bold text-indigo-900 flex items-center gap-1.5">
+                                                <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                                <span>Ca của {senderName} muốn đổi cho bạn:</span>
+                                            </div>
+                                            <div className="flex flex-wrap items-center gap-2 pl-5 text-slate-800">
+                                                <span className="font-semibold">{req.NgayApDung}</span>
+                                                {req.lichLamViec ? (
+                                                    <span className="font-mono text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md font-bold text-[11px]">
+                                                        {req.lichLamViec.LoaiCa ? `Ca ${req.lichLamViec.LoaiCa}: ` : ''}
+                                                        {req.lichLamViec.GioBatDau?.slice(0, 5)} - {req.lichLamViec.GioKetThuc?.slice(0, 5)}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-slate-400 font-mono text-[11px]">--</span>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div className="text-[11px] text-slate-600">
-                                            <span className="font-semibold">Lý do:</span> {req.LyDo}
+
+                                        {req.lichDoiSang && (
+                                            <div className="space-y-1 pt-2 border-t border-slate-200/60">
+                                                <div className="text-[11px] font-bold text-amber-900 flex items-center gap-1.5">
+                                                    <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                                    <span>Ca của bạn nhận thay thế:</span>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-2 pl-5 text-slate-800">
+                                                    <span className="font-semibold">{req.lichDoiSang.NgayLamViec}</span>
+                                                    <span className="font-mono text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md font-bold text-[11px]">
+                                                        {req.lichDoiSang.LoaiCa ? `Ca ${req.lichDoiSang.LoaiCa}: ` : ''}
+                                                        {req.lichDoiSang.GioBatDau?.slice(0, 5)} - {req.lichDoiSang.GioKetThuc?.slice(0, 5)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="text-[11px] text-slate-600 pt-2 border-t border-slate-200/60">
+                                            <span className="font-semibold text-slate-800">Lý do:</span> {req.LyDo}
                                         </div>
                                     </div>
 
@@ -487,63 +562,88 @@ export default function PersonalScheduleTimetable({
                                                     }`}
                                                 >
                                                     {myShiftsInSlot.length > 0 ? (
-                                                        myShiftsInSlot.map((sch) => (
-                                                            <div
-                                                                key={sch.MaLichLamViec}
-                                                                className={`rounded-2xl border p-2.5 shadow-xs space-y-1.5 ${shiftDef.tone}`}
-                                                            >
-                                                                <div className="flex items-center justify-between text-[11px] font-bold font-mono">
-                                                                    <span className="flex items-center gap-1">
-                                                                        <Clock className="w-3 h-3" />
-                                                                        {sch.GioBatDau?.slice(0, 5)} - {sch.GioKetThuc?.slice(0, 5)}
-                                                                    </span>
-                                                                    <span className="text-[9px] opacity-70">#{sch.MaLichLamViec}</span>
+                                                        myShiftsInSlot.map((sch) => {
+                                                            const timeStatus = checkShiftTimeStatus(sch);
+                                                            return (
+                                                                <div
+                                                                    key={sch.MaLichLamViec}
+                                                                    className={`rounded-2xl border p-2.5 shadow-xs space-y-1.5 ${shiftDef.tone}`}
+                                                                >
+                                                                    <div className="flex items-center justify-between text-[11px] font-bold font-mono">
+                                                                        <span className="flex items-center gap-1">
+                                                                            <Clock className="w-3 h-3" />
+                                                                            {sch.GioBatDau?.slice(0, 5)} - {sch.GioKetThuc?.slice(0, 5)}
+                                                                        </span>
+                                                                        <span className="text-[9px] opacity-70">#{sch.MaLichLamViec}</span>
+                                                                    </div>
+
+                                                                    {(sch.caKhams || []).length > 0 && (
+                                                                        <div className="text-[10px] font-medium text-emerald-800">
+                                                                            {sch.caKhams!.length} ca khám chỉ định
+                                                                        </div>
+                                                                    )}
+
+                                                                    {sch.assigned_count !== undefined && (
+                                                                        <div className="text-[10px] text-sky-800">
+                                                                            {sch.assigned_count} chỉ định CLS
+                                                                        </div>
+                                                                    )}
+
+                                                                    {/* Tác vụ đổi ca & xin phép theo trạng thái ca */}
+                                                                    {timeStatus.isPast ? (
+                                                                        <div className="pt-1.5 border-t border-black/10 flex items-center justify-between text-[10px] text-slate-400 italic">
+                                                                            <span>Ca đã kết thúc</span>
+                                                                            <span className="text-[9px] font-mono">Hoàn tất</span>
+                                                                        </div>
+                                                                    ) : timeStatus.isOngoing ? (
+                                                                        <div className="pt-1.5 border-t border-black/10 flex items-center justify-between text-[10px]">
+                                                                            <span className="font-bold text-amber-700 flex items-center gap-1">
+                                                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                                                                                Đang trực
+                                                                            </span>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => openLeaveForSchedule(sch, 'VE_SOM')}
+                                                                                className="font-bold text-indigo-700 hover:text-indigo-900 underline"
+                                                                                title="Xin về sớm khi có việc đột xuất trong ca trực"
+                                                                            >
+                                                                                Xin về sớm
+                                                                            </button>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="pt-1.5 border-t border-black/10 flex items-center justify-between gap-1 text-[10px]">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => openSwapForSchedule(sch)}
+                                                                                className="font-bold underline hover:opacity-80 flex items-center gap-0.5"
+                                                                            >
+                                                                                <ArrowRightLeft className="w-2.5 h-2.5" /> Đổi ca
+                                                                            </button>
+
+                                                                            <div className="flex items-center gap-1">
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => openLeaveForSchedule(sch, 'DI_MUON')}
+                                                                                    className="opacity-70 hover:opacity-100"
+                                                                                    title="Xin đi muộn (trước giờ bắt đầu tối thiểu 15p)"
+                                                                                >
+                                                                                    Muộn
+                                                                                </button>
+                                                                                <span>•</span>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => openLeaveForSchedule(sch, 'VE_SOM')}
+                                                                                    className="opacity-70 hover:opacity-100"
+                                                                                    title="Xin về sớm"
+                                                                                >
+                                                                                    Sớm
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
-
-                                                                {(sch.caKhams || []).length > 0 && (
-                                                                    <div className="text-[10px] font-medium text-emerald-800">
-                                                                        {sch.caKhams!.length} ca khám chỉ định
-                                                                    </div>
-                                                                )}
-
-                                                                {sch.assigned_count !== undefined && (
-                                                                    <div className="text-[10px] text-sky-800">
-                                                                        {sch.assigned_count} chỉ định CLS
-                                                                    </div>
-                                                                )}
-
-                                                                {/* Nút tác vụ đổi ca trực tiếp */}
-                                                                <div className="pt-1.5 border-t border-black/10 flex items-center justify-between gap-1 text-[10px]">
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => openSwapForSchedule(sch)}
-                                                                        className="font-bold underline hover:opacity-80 flex items-center gap-0.5"
-                                                                    >
-                                                                        <ArrowRightLeft className="w-2.5 h-2.5" /> Đổi ca
-                                                                    </button>
-
-                                                                    <div className="flex items-center gap-1">
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => openLeaveForSchedule(sch, 'DI_MUON')}
-                                                                            className="opacity-70 hover:opacity-100"
-                                                                            title="Xin đi muộn"
-                                                                        >
-                                                                            Muộn
-                                                                        </button>
-                                                                        <span>•</span>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => openLeaveForSchedule(sch, 'VE_SOM')}
-                                                                            className="opacity-70 hover:opacity-100"
-                                                                            title="Xin về sớm"
-                                                                        >
-                                                                            Sớm
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        ))
+                                                            );
+                                                        })
                                                     ) : (
                                                         <div className="h-full min-h-[60px] flex items-center justify-center text-[10px] text-slate-300">
                                                             --
@@ -575,39 +675,70 @@ export default function PersonalScheduleTimetable({
 
                     {daySchedules.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {daySchedules.map((sch) => (
-                                <div key={sch.MaLichLamViec} className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-5 space-y-3">
-                                    <div className="flex items-center justify-between">
-                                        <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-600 text-white">
-                                            {sch.LoaiCa ? `Ca ${sch.LoaiCa}` : 'Ca chuẩn'}
-                                        </span>
-                                        <span className="text-xs text-slate-500 font-mono">Mã ca: #{sch.MaLichLamViec}</span>
-                                    </div>
+                            {daySchedules.map((sch) => {
+                                const timeStatus = checkShiftTimeStatus(sch);
+                                return (
+                                    <div key={sch.MaLichLamViec} className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-5 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-600 text-white">
+                                                {sch.LoaiCa ? `Ca ${sch.LoaiCa}` : 'Ca chuẩn'}
+                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                {timeStatus.isPast ? (
+                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-600">Đã kết thúc</span>
+                                                ) : timeStatus.isOngoing ? (
+                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-800 animate-pulse">Đang trực</span>
+                                                ) : null}
+                                                <span className="text-xs text-slate-500 font-mono">Mã ca: #{sch.MaLichLamViec}</span>
+                                            </div>
+                                        </div>
 
-                                    <div className="flex items-center gap-3 text-slate-700 text-sm font-semibold font-mono">
-                                        <Clock className="w-4 h-4 text-indigo-600" />
-                                        <span>{sch.GioBatDau?.slice(0, 5)} - {sch.GioKetThuc?.slice(0, 5)}</span>
-                                    </div>
+                                        <div className="flex items-center gap-3 text-slate-700 text-sm font-semibold font-mono">
+                                            <Clock className="w-4 h-4 text-indigo-600" />
+                                            <span>{sch.GioBatDau?.slice(0, 5)} - {sch.GioKetThuc?.slice(0, 5)}</span>
+                                        </div>
 
-                                    <div className="flex items-center gap-2 pt-2 border-t border-indigo-100">
-                                        <button
-                                            type="button"
-                                            onClick={() => openSwapForSchedule(sch)}
-                                            className="flex-1 py-2 rounded-xl text-xs font-bold bg-white border border-indigo-200 text-indigo-900 hover:bg-indigo-50 transition-all flex items-center justify-center gap-1.5"
-                                        >
-                                            <ArrowRightLeft className="w-3.5 h-3.5" />
-                                            Xin đổi ca này
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => openLeaveForSchedule(sch, 'VE_SOM')}
-                                            className="px-3 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all"
-                                        >
-                                            Xin về sớm
-                                        </button>
+                                        <div className="flex items-center gap-2 pt-2 border-t border-indigo-100">
+                                            {timeStatus.isPast ? (
+                                                <span className="text-xs text-slate-400 italic py-1">Ca trực đã hoàn tất trong quá khứ. Không thể đổi ca hoặc xin phép.</span>
+                                            ) : timeStatus.isOngoing ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openLeaveForSchedule(sch, 'VE_SOM')}
+                                                    className="w-full py-2 rounded-xl text-xs font-bold bg-white border border-amber-300 text-amber-900 hover:bg-amber-50 transition-all"
+                                                >
+                                                    Xin về sớm đột xuất
+                                                </button>
+                                            ) : (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openSwapForSchedule(sch)}
+                                                        className="flex-1 py-2 rounded-xl text-xs font-bold bg-white border border-indigo-200 text-indigo-900 hover:bg-indigo-50 transition-all flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <ArrowRightLeft className="w-3.5 h-3.5" />
+                                                        Xin đổi ca này
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openLeaveForSchedule(sch, 'DI_MUON')}
+                                                        className="px-3 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all"
+                                                    >
+                                                        Đi muộn
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openLeaveForSchedule(sch, 'VE_SOM')}
+                                                        className="px-3 py-2 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all"
+                                                    >
+                                                        Về sớm
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     ) : (
                         <div className="py-12 text-center text-slate-400 text-sm">
@@ -634,7 +765,7 @@ export default function PersonalScheduleTimetable({
                             <thead>
                                 <tr className="text-left font-bold uppercase text-slate-400">
                                     <th className="py-2.5 px-3">Loại đơn</th>
-                                    <th className="py-2.5 px-3">Ngày ca trực</th>
+                                    <th className="py-2.5 px-3">Ca trực & Khung giờ</th>
                                     <th className="py-2.5 px-3">Chi tiết / Đồng nghiệp đổi</th>
                                     <th className="py-2.5 px-3">Lý do</th>
                                     <th className="py-2.5 px-3">Trạng thái tiến trình</th>
@@ -647,11 +778,21 @@ export default function PersonalScheduleTimetable({
                                             <td className="py-3 px-3 font-bold text-slate-900">
                                                 {r.LoaiDon === 'DOI_CA' ? 'Xin đổi ca' : r.LoaiDon === 'VE_SOM' ? 'Xin về sớm' : r.LoaiDon === 'DI_MUON' ? 'Xin đến muộn' : 'Xin nghỉ phép'}
                                             </td>
-                                            <td className="py-3 px-3 font-mono text-slate-600">{r.NgayApDung}</td>
+                                            <td className="py-3 px-3 font-mono text-slate-700">
+                                                <div className="font-bold text-slate-900">{r.NgayApDung}</div>
+                                                {r.lichLamViec ? (
+                                                    <div className="text-[11px] text-indigo-700 font-sans mt-0.5 font-medium">
+                                                        {r.lichLamViec.LoaiCa ? `Ca ${r.lichLamViec.LoaiCa}: ` : ''}
+                                                        {r.lichLamViec.GioBatDau?.slice(0, 5)} - {r.lichLamViec.GioKetThuc?.slice(0, 5)}
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-[11px] text-slate-400 font-sans mt-0.5">--</div>
+                                                )}
+                                            </td>
                                             <td className="py-3 px-3">
                                                 {r.LoaiDon === 'DOI_CA' ? (
                                                     <span className="font-semibold text-indigo-700">
-                                                        Đổi cùng: {r.taiKhoanDoiCung?.name || r.taiKhoanDoiCung?.TenDangNhap || `TK #${r.TaiKhoanDoiCung}`}
+                                                        Đổi cùng: {r.taiKhoanDoiCung?.bacSi?.HoTen || r.taiKhoanDoiCung?.nhanVien?.HoTen || r.taiKhoanDoiCung?.name || r.taiKhoanDoiCung?.TenDangNhap || `TK #${r.TaiKhoanDoiCung}`}
                                                     </span>
                                                 ) : (
                                                     <span>{r.SoPhutXinPhep > 0 ? `${r.SoPhutXinPhep} phút` : '--'}</span>
@@ -693,9 +834,13 @@ export default function PersonalScheduleTimetable({
             {/* MODAL GỬI ĐƠN TỪ / ĐỔI CA */}
             <RequestModal
                 isOpen={modalOpen}
-                onClose={() => setModalOpen(false)}
+                onClose={() => {
+                    setModalOpen(false);
+                    setModalSelectedSchedule(undefined);
+                }}
                 rolePrefix={rolePrefix}
                 colleagues={colleagues}
+                selectedSchedule={modalSelectedSchedule}
                 initialLoaiDon={modalLoaiDon}
                 initialDate={modalDate}
                 initialScheduleId={modalScheduleId}

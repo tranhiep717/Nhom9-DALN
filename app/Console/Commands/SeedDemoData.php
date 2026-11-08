@@ -27,6 +27,7 @@ use App\Models\ThanhToan;
 use App\Models\ChamCong;
 use App\Models\BangLuong;
 use App\Models\DonTuNhanSu;
+use App\Models\NhanVien;
 
 class SeedDemoData extends Command
 {
@@ -373,17 +374,53 @@ class SeedDemoData extends Command
                 ['TenDangNhap' => 'letan_demo'],
                 ['Email' => 'letan@smartcare.vn', 'MatKhau' => $hashedPass, 'MaVaiTro' => $vtRecep->MaVaiTro, 'TrangThai' => 'HOAT_DONG']
             );
+            $nvMai = NhanVien::updateOrCreate(
+                ['MaTaiKhoan' => $tkRecepMai->MaTaiKhoan],
+                [
+                    'HoTen' => 'Lê Thị Mai (Lễ tân 1)',
+                    'LoaiNhanVien' => 'LE_TAN',
+                    'SoDienThoai' => '0918112233',
+                    'EmailLienHe' => 'letan@smartcare.vn',
+                    'GioiTinh' => 'NU',
+                    'NgayVaoLam' => '2025-05-15',
+                    'TrangThai' => 'DANG_LAM_VIEC',
+                ]
+            );
 
             // Lễ tân 2 (Phối hợp đổi ca)
             $tkRecepHoa = TaiKhoan::updateOrCreate(
                 ['TenDangNhap' => 'letan_hoa'],
                 ['Email' => 'letan.hoa@smartcare.vn', 'MatKhau' => $hashedPass, 'MaVaiTro' => $vtRecep->MaVaiTro, 'TrangThai' => 'HOAT_DONG']
             );
+            $nvHoa = NhanVien::updateOrCreate(
+                ['MaTaiKhoan' => $tkRecepHoa->MaTaiKhoan],
+                [
+                    'HoTen' => 'Lê Thị Hoa',
+                    'LoaiNhanVien' => 'LE_TAN',
+                    'SoDienThoai' => '0928223344',
+                    'EmailLienHe' => 'letan.hoa@smartcare.vn',
+                    'GioiTinh' => 'NU',
+                    'NgayVaoLam' => '2025-08-20',
+                    'TrangThai' => 'DANG_LAM_VIEC',
+                ]
+            );
 
             // Cận lâm sàng (Kỹ thuật viên)
             $tkClsDuc = TaiKhoan::updateOrCreate(
                 ['TenDangNhap' => 'cls_duc'],
                 ['Email' => 'cls.duc@smartcare.vn', 'MatKhau' => $hashedPass, 'MaVaiTro' => $vtCls->MaVaiTro, 'TrangThai' => 'HOAT_DONG']
+            );
+            $nvDuc = NhanVien::updateOrCreate(
+                ['MaTaiKhoan' => $tkClsDuc->MaTaiKhoan],
+                [
+                    'HoTen' => 'Nguyễn Văn Đức (KTV Xét nghiệm)',
+                    'LoaiNhanVien' => 'CAN_LAM_SANG',
+                    'SoDienThoai' => '0938334455',
+                    'EmailLienHe' => 'cls.duc@smartcare.vn',
+                    'GioiTinh' => 'NAM',
+                    'NgayVaoLam' => '2024-11-10',
+                    'TrangThai' => 'DANG_LAM_VIEC',
+                ]
             );
 
             // 4 Bệnh nhân demo trực tiếp (có tài khoản để đăng nhập kiểm tra)
@@ -845,11 +882,11 @@ class SeedDemoData extends Command
             $this->info("   -> Đã chốt thành công 7 bảng lương tháng 10/2026 cho toàn bộ đội ngũ bác sĩ và nhân viên.");
 
             // -------------------------------------------------------------------------
-            // BƯỚC 7: CÁC CA DEMO TRỰC TIẾP HÔM NAY (05/11/2026) VỚI ĐỦ 4 BÁC SĨ & CA KHÁM
+            // BƯỚC 7: CÁC CA DEMO TRỰC TIẾP HÔM NAY VỚI ĐỦ 4 BÁC SĨ & CA KHÁM
             // -------------------------------------------------------------------------
-            $this->info("7. Chuẩn bị 4 ca bệnh trực quan hôm nay (05/11/2026) cho Hội đồng kiểm tra...");
-
-            $today = Carbon::create(2026, 11, 5, 8, 0, 0);
+            $today = Carbon::today()->setHour(8)->setMinute(0)->setSecond(0);
+            $todayDateStr = $today->toDateString();
+            $this->info("7. Chuẩn bị 4 ca bệnh trực quan hôm nay ({$todayDateStr}) cho Hội đồng kiểm tra...");
 
             // Khởi tạo Lịch làm việc và Ca khám Sáng + Chiều hôm nay cho cả 4 bác sĩ
             $todayDoctors = [$bsNam, $bsHuong, $bsTuan, $bsLan];
@@ -859,7 +896,7 @@ class SeedDemoData extends Command
                 $todayLlv = LichLamViec::updateOrCreate(
                     [
                         'MaBacSi' => $d->MaBacSi,
-                        'NgayLamViec' => '2026-11-05',
+                        'NgayLamViec' => $todayDateStr,
                     ],
                     [
                         'MaTaiKhoan' => $d->MaTaiKhoan,
@@ -911,7 +948,7 @@ class SeedDemoData extends Command
                 'MaBenhNhan' => $bnAn->MaBenhNhan,
                 'MaCaKham' => $caNamSang->MaCaKham,
                 'LyDoKham' => 'Đau rát họng, ho có đờm trắng về đêm',
-                'NgayDat' => '2026-11-05',
+                'NgayDat' => $todayDateStr,
                 'TrangThai' => 'DA_TIEP_NHAN',
             ]);
 
@@ -919,7 +956,7 @@ class SeedDemoData extends Command
                 'MaBenhNhan' => $bnBinh->MaBenhNhan,
                 'MaCaKham' => $caHuongSang->MaCaKham,
                 'LyDoKham' => 'Nghẹt mũi, khó thở bên phải, ù tai',
-                'NgayDat' => '2026-11-05',
+                'NgayDat' => $todayDateStr,
                 'TrangThai' => 'DA_TIEP_NHAN',
             ]);
 
@@ -927,7 +964,7 @@ class SeedDemoData extends Command
                 'MaBenhNhan' => $bnCuong->MaBenhNhan,
                 'MaCaKham' => $caNamSang->MaCaKham,
                 'LyDoKham' => 'Tức ngực nhẹ khi leo cầu thang, tiền sử huyết áp',
-                'NgayDat' => '2026-11-05',
+                'NgayDat' => $todayDateStr,
                 'TrangThai' => 'DA_TIEP_NHAN',
             ]);
 
@@ -935,13 +972,13 @@ class SeedDemoData extends Command
                 'MaBenhNhan' => $bnDung->MaBenhNhan,
                 'MaCaKham' => $caTuanSang->MaCaKham,
                 'LyDoKham' => 'Lấy cao răng định kỳ',
-                'NgayDat' => '2026-11-05',
+                'NgayDat' => $todayDateStr,
                 'TrangThai' => 'HOAN_THANH',
             ]);
 
             // Ca 1: Chờ khám (CHO_KHAM) - BN Nguyễn Văn An (BHYT 80%), BS Trần Văn Nam (Khoa Nội)
             $lk1 = LuotKham::updateOrCreate(
-                ['MaBenhNhan' => $bnAn->MaBenhNhan, 'NgayKham' => '2026-11-05'],
+                ['MaBenhNhan' => $bnAn->MaBenhNhan, 'NgayKham' => $todayDateStr],
                 [
                     'MaBacSi' => $bsNam->MaBacSi,
                     'ThoiGianTiepNhan' => $today->copy()->setTime(8, 10, 0),
@@ -964,7 +1001,7 @@ class SeedDemoData extends Command
 
             // Ca 2: Đang khám & Chờ cận lâm sàng (DANG_KHAM) - BN Lê Thị Bình (BHYT 80%), BS Nguyễn Thu Hương (TMH)
             $lk2 = LuotKham::updateOrCreate(
-                ['MaBenhNhan' => $bnBinh->MaBenhNhan, 'NgayKham' => '2026-11-05'],
+                ['MaBenhNhan' => $bnBinh->MaBenhNhan, 'NgayKham' => $todayDateStr],
                 [
                     'MaBacSi' => $bsHuong->MaBacSi,
                     'ThoiGianTiepNhan' => $today->copy()->setTime(8, 20, 0),
@@ -1009,7 +1046,7 @@ class SeedDemoData extends Command
 
             // Ca 3: ĐÃ KHÁM XONG - ĐANG CHỜ LỄ TÂN LẬP HÓA ĐƠN (DA_KHAM_XONG) - BN Trần Quốc Cường (BHYT 95%), BS Nam (Nội)
             $lk3 = LuotKham::updateOrCreate(
-                ['MaBenhNhan' => $bnCuong->MaBenhNhan, 'NgayKham' => '2026-11-05'],
+                ['MaBenhNhan' => $bnCuong->MaBenhNhan, 'NgayKham' => $todayDateStr],
                 [
                     'MaBacSi' => $bsNam->MaBacSi,
                     'ThoiGianTiepNhan' => $today->copy()->setTime(8, 0, 0),
@@ -1060,7 +1097,7 @@ class SeedDemoData extends Command
                 ['MaLuotKham' => $lk3->MaLuotKham],
                 [
                     'MaBacSi' => $bsNam->MaBacSi,
-                    'NgayKeDon' => '2026-11-05',
+                    'NgayKeDon' => $todayDateStr,
                     'LoiDan' => 'Uống thuốc đều đặn vào lúc 8h sáng hàng ngày.',
                     'TrangThai' => 'DA_CAP',
                 ]
@@ -1090,7 +1127,7 @@ class SeedDemoData extends Command
 
             // Ca 4: ĐÃ HOÀN THÀNH & ĐÃ THANH TOÁN SÁNG NAY (HOAN_THANH) - BN Vũ Hoàng Dũng (Tự túc), BS Tuấn (RHM)
             $lk4 = LuotKham::updateOrCreate(
-                ['MaBenhNhan' => $bnDung->MaBenhNhan, 'NgayKham' => '2026-11-05'],
+                ['MaBenhNhan' => $bnDung->MaBenhNhan, 'NgayKham' => $todayDateStr],
                 [
                     'MaBacSi' => $bsTuan->MaBacSi,
                     'ThoiGianTiepNhan' => $today->copy()->setTime(8, 5, 0),
@@ -1181,19 +1218,19 @@ class SeedDemoData extends Command
 
             // Khởi tạo hàng đợi hôm nay
             DB::table('hang_doi_counter')->updateOrInsert(
-                ['NgayKham' => '2026-11-05', 'MaCaKham' => $caNamSang->MaCaKham, 'MaChuyenKhoa' => $ckNoi->MaChuyenKhoa],
+                ['NgayKham' => $todayDateStr, 'MaCaKham' => $caNamSang->MaCaKham, 'MaChuyenKhoa' => $ckNoi->MaChuyenKhoa],
                 ['SoHienTai' => 2, 'UpdatedAt' => now()]
             );
             DB::table('hang_doi_counter')->updateOrInsert(
-                ['NgayKham' => '2026-11-05', 'MaCaKham' => $caHuongSang->MaCaKham, 'MaChuyenKhoa' => $ckTMH->MaChuyenKhoa],
+                ['NgayKham' => $todayDateStr, 'MaCaKham' => $caHuongSang->MaCaKham, 'MaChuyenKhoa' => $ckTMH->MaChuyenKhoa],
                 ['SoHienTai' => 1, 'UpdatedAt' => now()]
             );
             DB::table('hang_doi_counter')->updateOrInsert(
-                ['NgayKham' => '2026-11-05', 'MaCaKham' => $caTuanSang->MaCaKham, 'MaChuyenKhoa' => $ckRHM->MaChuyenKhoa],
+                ['NgayKham' => $todayDateStr, 'MaCaKham' => $caTuanSang->MaCaKham, 'MaChuyenKhoa' => $ckRHM->MaChuyenKhoa],
                 ['SoHienTai' => 1, 'UpdatedAt' => now()]
             );
             DB::table('hang_doi_counter')->updateOrInsert(
-                ['NgayKham' => '2026-11-05', 'MaCaKham' => $caLanSang->MaCaKham, 'MaChuyenKhoa' => $ckNhi->MaChuyenKhoa],
+                ['NgayKham' => $todayDateStr, 'MaCaKham' => $caLanSang->MaCaKham, 'MaChuyenKhoa' => $ckNhi->MaChuyenKhoa],
                 ['SoHienTai' => 0, 'UpdatedAt' => now()]
             );
 
@@ -1208,6 +1245,37 @@ class SeedDemoData extends Command
                 ['MaLuotKham' => $lk4->MaLuotKham, 'LoaiSuKien' => 'GOI_SO', 'MaTaiKhoan' => $tkDocTuan->MaTaiKhoan, 'ThongTin' => 'Bác sĩ gọi vào phòng khám RHM', 'ThoiGian' => $today->copy()->setTime(8, 15, 0)],
             ]);
 
+            // Điểm danh vào ca trực hôm nay cho các nhân sự demo trực tiếp để không bị chặn bởi Middleware EnsureStaffCheckedIn
+            $todayCheckInStaff = [
+                ['acc' => $tkDocNam, 'bacSi' => $bsNam, 'role' => 'BAC_SI'],
+                ['acc' => $tkDocHuong, 'bacSi' => $bsHuong, 'role' => 'BAC_SI'],
+                ['acc' => $tkDocTuan, 'bacSi' => $bsTuan, 'role' => 'BAC_SI'],
+                ['acc' => $tkDocLan, 'bacSi' => $bsLan, 'role' => 'BAC_SI'],
+                ['acc' => $tkRecepMai, 'bacSi' => null, 'role' => 'LE_TAN'],
+                ['acc' => $tkClsDuc, 'bacSi' => null, 'role' => 'NHAN_VIEN_CAN_LAM_SANG'],
+            ];
+            foreach ($todayCheckInStaff as $item) {
+                ChamCong::updateOrCreate(
+                    [
+                        'MaTaiKhoan' => $item['acc']->MaTaiKhoan,
+                        'NgayChamCong' => $todayDateStr,
+                    ],
+                    [
+                        'MaBacSi' => $item['bacSi']?->MaBacSi,
+                        'LoaiCa' => 'sang',
+                        'GioCheckIn' => '07:50:00',
+                        'TrangThai' => 'DUNG_GIO',
+                        'SoPhutTre' => 0,
+                        'SoPhutVeSom' => 0,
+                        'TienLuongCoBan' => 400000,
+                        'PhuCapCa' => 50000,
+                        'TienThuong' => 0,
+                        'TienPhat' => 0,
+                        'TongTien' => 450000,
+                    ]
+                );
+            }
+
             // -------------------------------------------------------------------------
             // BƯỚC 8: LỊCH TRỰC 7 NGÀY TỚI CHO BÁC SĨ & NHÂN SỰ + LỊCH HẸN TƯƠNG LAI
             // -------------------------------------------------------------------------
@@ -1218,7 +1286,8 @@ class SeedDemoData extends Command
 
             for ($offset = 0; $offset < 7; $offset++) {
                 $shiftDate = Carbon::today()->addDays($offset);
-                if ($shiftDate->isSunday()) continue;
+                // Giữ nguyên lịch trực cho ngày hôm nay kể cả khi là Chủ Nhật để phục vụ demo trực quan
+                if ($offset > 0 && $shiftDate->isSunday()) continue;
 
                 // 1. Lịch làm việc và Ca khám cho 4 Bác sĩ
                 foreach ($activeDoctors as $d) {
@@ -1316,56 +1385,57 @@ class SeedDemoData extends Command
                 );
             }
 
-            // Đơn đổi ca mẫu: Lễ tân Mai (letan_demo) gửi đề xuất đổi ca thứ Bảy (07/11/2026) cho Lễ tân Hoa
+            // Đơn đổi ca mẫu: Lễ tân Mai (letan_demo) gửi đề xuất đổi ca cho Lễ tân Hoa
+            $tomorrowStr = Carbon::today()->addDay()->toDateString();
             DonTuNhanSu::updateOrCreate(
                 [
                     'MaTaiKhoan' => $tkRecepMai->MaTaiKhoan,
                     'LoaiDon' => 'DOI_CA',
-                    'NgayApDung' => Carbon::create(2026, 11, 7)->toDateString(),
+                    'NgayApDung' => $tomorrowStr,
                 ],
                 [
                     'TaiKhoanDoiCung' => $tkRecepHoa->MaTaiKhoan,
                     'XacNhanDongNghiep' => false,
                     'SoPhutXinPhep' => 0,
                     'SoPhutDuocDuyet' => 0,
-                    'LyDo' => 'Tôi có lịch thi nâng bậc nghiệp vụ vào sáng thứ Bảy, đề xuất đổi ca sáng với đồng nghiệp Hoa trực ca chiều.',
+                    'LyDo' => 'Tôi có lịch thi nâng bậc nghiệp vụ, đề xuất đổi ca sáng với đồng nghiệp Hoa trực ca chiều.',
                     'TrangThai' => 'CHO_DONG_NGHIEP_XAC_NHAN',
                 ]
             );
 
             // Tạo các lịch hẹn sắp tới trong 1 - 3 ngày tới
-            // 1. Ngày mai (06/11/2026): BN An đặt hẹn tái khám TMH tại BS Hương (ĐÃ XÁC NHẬN)
-            $tmrDate = Carbon::create(2026, 11, 6)->toDateString();
+            // 1. Ngày mai: BN An đặt hẹn tái khám TMH tại BS Hương (ĐÃ XÁC NHẬN)
+            $tmrDate = Carbon::today()->addDay()->toDateString();
             if (isset($futureCaKhamsByDoc[$bsHuong->MaBacSi][$tmrDate]['sang'])) {
                 LichHen::create([
                     'MaBenhNhan' => $bnAn->MaBenhNhan,
                     'MaCaKham' => $futureCaKhamsByDoc[$bsHuong->MaBacSi][$tmrDate]['sang']->MaCaKham,
                     'LyDoKham' => 'Tái khám nội soi kiểm tra họng và theo dõi điều trị',
-                    'NgayDat' => '2026-11-05',
+                    'NgayDat' => $todayDateStr,
                     'TrangThai' => 'DA_XAC_NHAN',
                 ]);
             }
 
-            // 2. Ngày kia (07/11/2026): BN Bình đặt hẹn khám Nội tại BS Nam (CHỜ XÁC NHẬN)
-            $satDate = Carbon::create(2026, 11, 7)->toDateString();
+            // 2. Ngày kia: BN Bình đặt hẹn khám Nội tại BS Nam (CHỜ XÁC NHẬN)
+            $satDate = Carbon::today()->addDays(2)->toDateString();
             if (isset($futureCaKhamsByDoc[$bsNam->MaBacSi][$satDate]['sang'])) {
                 LichHen::create([
                     'MaBenhNhan' => $bnBinh->MaBenhNhan,
                     'MaCaKham' => $futureCaKhamsByDoc[$bsNam->MaBacSi][$satDate]['sang']->MaCaKham,
                     'LyDoKham' => 'Tư vấn kết quả điều trị viêm dạ dày và kiểm tra tiêu hóa định kỳ',
-                    'NgayDat' => '2026-11-05',
+                    'NgayDat' => $todayDateStr,
                     'TrangThai' => 'CHO_XAC_NHAN',
                 ]);
             }
 
-            // 3. Ngày 09/11/2026 (Thứ Hai): BN Cường đặt hẹn Nhi khoa tại BS Lan (CHỜ XÁC NHẬN)
-            $monDate = Carbon::create(2026, 11, 9)->toDateString();
+            // 3. Ngày thứ 3: BN Cường đặt hẹn Nhi khoa tại BS Lan (CHỜ XÁC NHẬN)
+            $monDate = Carbon::today()->addDays(3)->toDateString();
             if (isset($futureCaKhamsByDoc[$bsLan->MaBacSi][$monDate]['sang'])) {
                 LichHen::create([
                     'MaBenhNhan' => $bnCuong->MaBenhNhan,
                     'MaCaKham' => $futureCaKhamsByDoc[$bsLan->MaBacSi][$monDate]['sang']->MaCaKham,
                     'LyDoKham' => 'Khám tổng quát và tư vấn dinh dưỡng cho cháu nội',
-                    'NgayDat' => '2026-11-05',
+                    'NgayDat' => $todayDateStr,
                     'TrangThai' => 'CHO_XAC_NHAN',
                 ]);
             }

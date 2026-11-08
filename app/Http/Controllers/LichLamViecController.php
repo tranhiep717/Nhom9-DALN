@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\BacSi;
 use App\Models\LichLamViec;
+use App\Models\ThongBao;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -41,15 +42,20 @@ class LichLamViecController extends Controller
             $query->where('MaBacSi', $maBacSi);
         }
 
-        // Lọc theo ngày (mặc định lấy tuần hiện tại cho bác sĩ nếu không chọn ngày cụ thể)
-        if ($date = $request->input('date')) {
+        // Lọc theo ngày: Mặc định lấy tuần hiện tại (startOfWeek đến endOfWeek) nếu không lọc ngày cụ thể
+        $from = $request->input('from_date');
+        $to = $request->input('to_date');
+        $date = $request->input('date');
+
+        if ($date) {
             $query->whereDate('NgayLamViec', $date);
-        } elseif ($from = $request->input('from_date')) {
+        } elseif ($from) {
             $query->whereDate('NgayLamViec', '>=', $from);
-            if ($to = $request->input('to_date')) {
+            if ($to) {
                 $query->whereDate('NgayLamViec', '<=', $to);
             }
-        } elseif ($user && $user->isBacSi()) {
+        } else {
+            // Mặc định cả Admin và Bác sĩ đều xem tuần hiện tại để tránh tràn lịch quá khứ
             $from = now()->startOfWeek()->toDateString();
             $to = now()->endOfWeek()->toDateString();
             $query->whereDate('NgayLamViec', '>=', $from)->whereDate('NgayLamViec', '<=', $to);
@@ -76,7 +82,7 @@ class LichLamViecController extends Controller
                 ->orderBy('HoTen', 'asc')
                 ->get();
 
-            $clsStaff = \App\Models\TaiKhoan::with('vaiTro:MaVaiTro,TenVaiTro')
+            $clsStaff = \App\Models\TaiKhoan::with(['vaiTro:MaVaiTro,TenVaiTro', 'nhanVien:MaNhanVien,MaTaiKhoan,HoTen,LoaiNhanVien,SoDienThoai'])
                 ->whereHas('vaiTro', fn ($query) => $query->where('TenVaiTro', 'NHAN_VIEN_CAN_LAM_SANG'))
                 ->orderBy('Email', 'asc')
                 ->get()
@@ -84,14 +90,14 @@ class LichLamViecController extends Controller
                     return [
                         'MaTaiKhoan' => $staff->MaTaiKhoan,
                         'TenDangNhap' => $staff->TenDangNhap,
-                        'HoTen' => $staff->name ?? $staff->TenDangNhap,
+                        'HoTen' => $staff->nhanVien?->HoTen ?? $staff->name ?? $staff->TenDangNhap,
                         'Email' => $staff->Email,
                         'TrangThai' => $staff->TrangThai,
                         'role' => 'CLS',
                     ];
                 });
 
-            $receptionStaff = \App\Models\TaiKhoan::with('vaiTro:MaVaiTro,TenVaiTro')
+            $receptionStaff = \App\Models\TaiKhoan::with(['vaiTro:MaVaiTro,TenVaiTro', 'nhanVien:MaNhanVien,MaTaiKhoan,HoTen,LoaiNhanVien,SoDienThoai'])
                 ->whereHas('vaiTro', fn ($query) => $query->where('TenVaiTro', 'LE_TAN'))
                 ->orderBy('Email', 'asc')
                 ->get()
@@ -99,7 +105,7 @@ class LichLamViecController extends Controller
                     return [
                         'MaTaiKhoan' => $staff->MaTaiKhoan,
                         'TenDangNhap' => $staff->TenDangNhap,
-                        'HoTen' => $staff->name ?? $staff->TenDangNhap,
+                        'HoTen' => $staff->nhanVien?->HoTen ?? $staff->name ?? $staff->TenDangNhap,
                         'Email' => $staff->Email,
                         'TrangThai' => $staff->TrangThai,
                         'role' => 'RECEPTION',
@@ -113,18 +119,24 @@ class LichLamViecController extends Controller
                     'cls' => $clsStaff,
                     'reception' => $receptionStaff,
                 ],
-                'filters' => $request->only(['date', 'from_date', 'to_date', 'doctor_id', 'status']),
+                'filters' => [
+                    'date' => $date,
+                    'from_date' => $from,
+                    'to_date' => $to,
+                    'doctor_id' => $request->input('doctor_id'),
+                    'status' => $request->input('status'),
+                ],
             ]);
         }
 
         // Dành cho bác sĩ: Lấy đơn đổi ca chờ bác sĩ xác nhận + danh sách đồng nghiệp
-        $requestsForMe = \App\Models\DonTuNhanSu::with(['taiKhoan.vaiTro', 'taiKhoan.bacSi.chuyenKhoa', 'lichLamViec', 'lichDoiSang'])
+        $requestsForMe = \App\Models\DonTuNhanSu::with(['taiKhoan.vaiTro', 'taiKhoan.bacSi.chuyenKhoa', 'taiKhoan.nhanVien', 'lichLamViec', 'lichDoiSang'])
             ->where('TaiKhoanDoiCung', $user->MaTaiKhoan)
             ->where('TrangThai', 'CHO_DONG_NGHIEP_XAC_NHAN')
             ->orderBy('created_at', 'desc')
             ->get();
 
-        $myRequests = \App\Models\DonTuNhanSu::with(['taiKhoanDoiCung.bacSi', 'lichLamViec', 'lichDoiSang'])
+        $myRequests = \App\Models\DonTuNhanSu::with(['taiKhoanDoiCung.bacSi', 'taiKhoanDoiCung.nhanVien', 'lichLamViec', 'lichDoiSang'])
             ->where('MaTaiKhoan', $user->MaTaiKhoan)
             ->orderBy('created_at', 'desc')
             ->limit(30)
@@ -272,6 +284,35 @@ class LichLamViecController extends Controller
             'SoLuongTiepNhan' => $validated['SoLuongTiepNhan'] ?? 10,
             'TrangThai' => $validated['TrangThai'] ?? 'MO',
         ]);
+
+        // Tự động tạo thông báo gửi tới nhân sự được phân ca
+        $targetTaiKhoanId = $maTaiKhoan;
+        if (!$targetTaiKhoanId && $maBacSi) {
+            $targetTaiKhoanId = BacSi::where('MaBacSi', $maBacSi)->value('MaTaiKhoan');
+        }
+
+        if ($targetTaiKhoanId) {
+            $shiftLabel = match ($validated['LoaiCa'] ?? '') {
+                'sang' => 'Ca sáng',
+                'chieu' => 'Ca chiều',
+                'toi' => 'Ca tối',
+                'dem' => 'Ca đêm',
+                'ngay' => 'Ca cả ngày',
+                default => 'Ca trực'
+            };
+            $gioStart = substr($validated['GioBatDau'], 0, 5);
+            $gioEnd = substr($validated['GioKetThuc'], 0, 5);
+
+            ThongBao::create([
+                'MaTaiKhoan' => $targetTaiKhoanId,
+                'TieuDe' => 'Phân công ca trực mới',
+                'NoiDung' => "Bạn vừa được Quản trị viên phân công {$shiftLabel} ngày {$validated['NgayLamViec']} ({$gioStart} - {$gioEnd}). Vui lòng kiểm tra thời khóa biểu!",
+                'Loai' => 'LICH_LAM_VIEC',
+                'DuongDan' => $maBacSi ? '/doctor/schedule' : '/staff/schedule',
+                'TrangThai' => 'CHUA_DOC',
+                'NgayTao' => now(),
+            ]);
+        }
 
         return response()->json([
             'success' => true,

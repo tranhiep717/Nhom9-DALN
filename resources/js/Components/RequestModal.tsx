@@ -17,10 +17,28 @@ interface Props {
     onClose: () => void;
     rolePrefix: 'doctor' | 'receptionist' | 'cls';
     todaySchedule?: any;
+    selectedSchedule?: any;
     colleagues?: ColleagueOption[];
     initialLoaiDon?: 'DI_MUON' | 'VE_SOM' | 'DOI_CA' | 'NGHI_PHEP';
     initialDate?: string;
     initialScheduleId?: number;
+}
+
+function calculateExpectedTime(baseTimeStr?: string, minutes: number = 0, direction: 'add' | 'subtract' = 'add'): string {
+    if (!baseTimeStr) return '';
+    const parts = baseTimeStr.slice(0, 5).split(':').map(Number);
+    if (isNaN(parts[0]) || isNaN(parts[1])) return '';
+    let totalMins = parts[0] * 60 + parts[1];
+    if (direction === 'add') {
+        totalMins += minutes;
+    } else {
+        totalMins -= minutes;
+    }
+    if (totalMins < 0) totalMins = 0;
+    if (totalMins >= 24 * 60) totalMins = 24 * 60 - 1;
+    const h = Math.floor(totalMins / 60).toString().padStart(2, '0');
+    const m = (totalMins % 60).toString().padStart(2, '0');
+    return `${h}:${m}`;
 }
 
 export default function RequestModal({ 
@@ -28,18 +46,22 @@ export default function RequestModal({
     onClose, 
     rolePrefix, 
     todaySchedule,
+    selectedSchedule,
     colleagues = [],
     initialLoaiDon = 'VE_SOM',
     initialDate,
     initialScheduleId,
 }: Props) {
+    const todayStr = new Date().toISOString().slice(0, 10);
     const [loaiDon, setLoaiDon] = useState<'DI_MUON' | 'VE_SOM' | 'DOI_CA' | 'NGHI_PHEP'>(initialLoaiDon);
-    const [ngayApDung, setNgayApDung] = useState(initialDate || new Date().toISOString().slice(0, 10));
+    const [ngayApDung, setNgayApDung] = useState(initialDate || todayStr);
     const [soPhut, setSoPhut] = useState<number>(30);
     const [taiKhoanDoiCung, setTaiKhoanDoiCung] = useState<string | number>('');
     const [lyDo, setLyDo] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+    const targetShift = selectedSchedule || todaySchedule;
 
     useEffect(() => {
         if (initialLoaiDon) setLoaiDon(initialLoaiDon);
@@ -48,9 +70,33 @@ export default function RequestModal({
 
     if (!isOpen) return null;
 
+    const isShiftPastOrOngoing = () => {
+        if (!targetShift) {
+            return ngayApDung < todayStr;
+        }
+        const shiftDate = targetShift.NgayLamViec || ngayApDung;
+        if (shiftDate < todayStr) return true;
+        if (shiftDate === todayStr && targetShift.GioBatDau) {
+            const now = new Date();
+            const [h, m] = targetShift.GioBatDau.slice(0, 5).split(':').map(Number);
+            const startTime = new Date();
+            startTime.setHours(h, m, 0, 0);
+            const cutoff = new Date(startTime.getTime() - 15 * 60 * 1000);
+            return now >= cutoff;
+        }
+        return false;
+    };
+
+    const isBlocked = (loaiDon === 'DOI_CA' || loaiDon === 'DI_MUON') && isShiftPastOrOngoing();
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setErrorMsg(null);
+
+        if (isBlocked) {
+            setErrorMsg('Ca trực này đã bắt đầu hoặc đã qua. Không thể gửi yêu cầu đổi ca hoặc xin đi muộn.');
+            return;
+        }
 
         if (loaiDon === 'DOI_CA' && !taiKhoanDoiCung) {
             setErrorMsg('Vui lòng chọn đồng nghiệp bạn đã thỏa thuận đổi ca ngoài thực tế.');
@@ -64,13 +110,13 @@ export default function RequestModal({
 
         setSubmitting(true);
 
-        const scheduleId = initialScheduleId || todaySchedule?.MaLichLamViec || null;
+        const scheduleId = initialScheduleId || targetShift?.MaLichLamViec || null;
 
         const payload: any = {
             LoaiDon: loaiDon,
             NgayApDung: ngayApDung,
             MaLichLamViec: scheduleId,
-            SoPhutXinPhep: (loaiDon === 'DI_MUON' || loaiDon === 'VE_SOM') ? soPhut : 0,
+            SoPhutXinPhep: (loaiDon === 'DI_MUON' || loaiDon === 'VE_SOM') ? Math.min(soPhut, 90) : 0,
             LyDo: lyDo.trim(),
         };
 
@@ -116,6 +162,65 @@ export default function RequestModal({
                         <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
                             <AlertCircle className="w-4 h-4 shrink-0" />
                             <span>{errorMsg}</span>
+                        </div>
+                    )}
+
+                    {/* Hộp thông tin ca trực đang thao tác */}
+                    {targetShift && (
+                        <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-200/80 text-xs space-y-2">
+                            <div className="flex items-center justify-between">
+                                <span className="font-bold text-indigo-950 flex items-center gap-1.5">
+                                    <Clock className="w-4 h-4 text-indigo-600" />
+                                    Thông tin ca trực được chọn:
+                                </span>
+                                <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
+                                    Mã ca #{targetShift.MaLichLamViec}
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-slate-700 pt-1">
+                                <div>
+                                    <span className="text-slate-500">Ngày làm việc: </span>
+                                    <strong className="text-slate-900">{targetShift.NgayLamViec}</strong>
+                                </div>
+                                <div>
+                                    <span className="text-slate-500">Khung giờ: </span>
+                                    <strong className="text-slate-900">
+                                        {targetShift.GioBatDau?.slice(0, 5)} - {targetShift.GioKetThuc?.slice(0, 5)}
+                                    </strong>
+                                    {targetShift.LoaiCa && <span className="ml-1 text-slate-500">({targetShift.LoaiCa})</span>}
+                                </div>
+                            </div>
+
+                            {/* Dự tính giờ vào ca đối với đi muộn */}
+                            {loaiDon === 'DI_MUON' && targetShift.GioBatDau && (
+                                <div className="pt-2 border-t border-indigo-100/80 text-emerald-800 text-[11px] flex items-center justify-between">
+                                    <span>Giờ bắt đầu: <strong>{targetShift.GioBatDau.slice(0, 5)}</strong> (+{soPhut}p)</span>
+                                    <span className="font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md">
+                                        Check-in dự kiến: {calculateExpectedTime(targetShift.GioBatDau, soPhut, 'add')}
+                                    </span>
+                                </div>
+                            )}
+
+                            {/* Dự tính giờ về đối với về sớm */}
+                            {loaiDon === 'VE_SOM' && targetShift.GioKetThuc && (
+                                <div className="pt-2 border-t border-indigo-100/80 text-amber-800 text-[11px] flex items-center justify-between">
+                                    <span>Giờ kết thúc: <strong>{targetShift.GioKetThuc.slice(0, 5)}</strong> (-{soPhut}p)</span>
+                                    <span className="font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-md">
+                                        Check-out dự kiến: {calculateExpectedTime(targetShift.GioKetThuc, soPhut, 'subtract')}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Cảnh báo ca đã qua / đang diễn ra */}
+                    {isBlocked && (
+                        <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-300 text-xs text-rose-800 flex items-start gap-2.5">
+                            <ShieldAlert className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                            <div>
+                                <strong className="font-bold block">Không thể gửi đơn cho ca trực này:</strong>
+                                <span>Quy chế bệnh viện quy định không đổi ca hoặc xin đi muộn cho ca trực trong quá khứ hoặc ca đã/sắp bắt đầu (trước 15 phút). Vui lòng chọn ca trực tương lai.</span>
+                            </div>
                         </div>
                     )}
 
@@ -202,6 +307,7 @@ export default function RequestModal({
                             <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                             <input
                                 type="date"
+                                min={todayStr}
                                 value={ngayApDung}
                                 onChange={(e) => setNgayApDung(e.target.value)}
                                 className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-indigo-200 focus:outline-none"
@@ -214,7 +320,7 @@ export default function RequestModal({
                     {(loaiDon === 'DI_MUON' || loaiDon === 'VE_SOM') && (
                         <div>
                             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                                {loaiDon === 'VE_SOM' ? 'Số phút xin về sớm tối đa' : 'Số phút xin đến muộn tối đa'}
+                                {loaiDon === 'VE_SOM' ? 'Số phút xin về sớm (tối đa 90p)' : 'Số phút xin đến muộn (tối đa 90p)'}
                             </label>
                             <div className="flex items-center gap-2 mb-2">
                                 {[15, 30, 45, 60, 90].map((mins) => (
@@ -237,15 +343,15 @@ export default function RequestModal({
                                 <input
                                     type="number"
                                     min={5}
-                                    max={240}
+                                    max={90}
                                     value={soPhut}
-                                    onChange={(e) => setSoPhut(Number(e.target.value))}
-                                    placeholder="Nhập số phút cụ thể"
-                                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+                                    onChange={(e) => setSoPhut(Math.min(90, Math.max(5, Number(e.target.value))))}
+                                    placeholder="Nhập số phút cụ thể (tối đa 90)"
+                                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-indigo-200 focus:outline-none font-medium"
                                 />
                             </div>
                             <p className="text-[11px] text-slate-500 mt-1">
-                                * Quẹt thẻ trong giới hạn {soPhut} phút sẽ được miễn phạt khi Admin duyệt. Phần vượt quá sẽ áp dụng chế tài tự động.
+                                * Giới hạn tối đa 90 phút. Quẹt thẻ trong giới hạn {soPhut} phút sẽ được miễn phạt khi Admin duyệt. Nếu vắng mặt trên 90 phút, vui lòng làm đơn Đổi ca hoặc Nghỉ phép.
                             </p>
                         </div>
                     )}
@@ -275,7 +381,7 @@ export default function RequestModal({
                         </button>
                         <button
                             type="submit"
-                            disabled={submitting}
+                            disabled={submitting || isBlocked}
                             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all disabled:opacity-50"
                         >
                             <Send className="w-4 h-4" />
