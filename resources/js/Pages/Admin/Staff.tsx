@@ -17,7 +17,12 @@ interface AdminStaffProps {
 
 export default function Staff({ auth, staffs = [], stats, filters = {} }: AdminStaffProps) {
     return (
-        <DashboardLayout role="admin" navItems={adminNavItems} header="Quản lý Nhân sự">
+        <DashboardLayout
+            role="admin"
+            navItems={adminNavItems}
+            user={{ name: auth?.user?.TenDangNhap || 'Quản trị viên', code: 'ADMIN' }}
+            header="Quản lý Nhân viên"
+        >
             <Head title="Quản lý Nhân sự - SmartCare Admin" />
             <div className="max-w-7xl mx-auto">
                 <StaffTab staffs={staffs} stats={stats} filters={filters} />

@@ -336,6 +336,11 @@ export default function Queue({
         return Math.abs(ageDt.getUTCFullYear() - 1970);
     };
 
+    // Helper định dạng tiền tệ
+    const formatCurrency = (val?: number) => {
+        return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val || 0);
+    };
+
     // Debounced search bệnh nhân qua API
     useEffect(() => {
         if (!showWalkInModal || showNewPatientForm) return;
@@ -608,6 +613,9 @@ export default function Queue({
         }, {
             preserveScroll: true,
             onSuccess: () => {
+                const debt = Number((selectedPatient as any)?.unpaid_debt || (selectedPatient as any)?.unpaidDebt || 0);
+                const debtNotice = debt > 0 ? ` ⚠️ Lưu ý: Bệnh nhân còn nợ viện phí lần trước (${formatCurrency(debt)}). Vui lòng đôn đốc thanh toán.` : '';
+
                 setShowWalkInModal(false);
                 setSelectedPatient(null);
                 setWalkInForm({
@@ -620,8 +628,8 @@ export default function Queue({
                     TuyenKCB: 'DUNG_TUYEN',
                 });
                 setNotification({
-                    type: 'success',
-                    message: 'Tiếp nhận bệnh nhân trực tiếp (P3) thành công! Số phiếu khám đã được cấp tự động theo thuật toán Hybrid Queue.',
+                    type: debt > 0 ? 'warning' : 'success',
+                    message: `Tiếp nhận bệnh nhân trực tiếp (P3) thành công! Số phiếu khám đã được cấp tự động theo thuật toán Hybrid Queue.${debtNotice}`,
                 });
                 setIsSubmittingWalkIn(false);
                 setActiveTab('hybrid_queue');
@@ -1187,6 +1195,12 @@ export default function Queue({
                                                                     {patient?.GioiTinh && ` • ${patient.GioiTinh === 'NAM' ? 'Nam' : 'Nữ'}`}
                                                                     {age ? ` • ${age} tuổi` : ''}
                                                                 </p>
+                                                                {Number(item.unpaid_debt || (item as any).unpaidDebt || 0) > 0 && (
+                                                                    <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200 w-fit">
+                                                                        <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                                                        <span>Nợ viện phí: {formatCurrency(item.unpaid_debt || (item as any).unpaidDebt)}</span>
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </td>
@@ -1565,32 +1579,53 @@ export default function Queue({
 
                                 {selectedPatient ? (
                                     /* THẺ THÔNG TIN BỆNH NHÂN ĐÃ CHỌN */
-                                    <div className="p-4 bg-teal-50/70 border border-teal-200 rounded-2xl flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-teal-600 text-white font-black flex items-center justify-center text-sm">
-                                                {selectedPatient.HoTen.charAt(0)}
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <h4 className="font-black text-slate-900 text-sm">{selectedPatient.HoTen}</h4>
-                                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-200 text-teal-800">
-                                                        BN#{selectedPatient.MaBenhNhan}
-                                                    </span>
+                                    <div className="space-y-2">
+                                        <div className="p-4 bg-teal-50/70 border border-teal-200 rounded-2xl flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-xl bg-teal-600 text-white font-black flex items-center justify-center text-sm">
+                                                    {selectedPatient.HoTen.charAt(0)}
                                                 </div>
-                                                <p className="text-xs text-slate-600 mt-0.5">
-                                                    SĐT: <strong className="text-slate-800">{selectedPatient.SoDienThoai}</strong>
-                                                    {selectedPatient.GioiTinh && ` • ${selectedPatient.GioiTinh === 'NAM' ? 'Nam' : 'Nữ'}`}
-                                                    {selectedPatient.NgaySinh && ` • ${selectedPatient.NgaySinh}`}
-                                                </p>
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <h4 className="font-black text-slate-900 text-sm">{selectedPatient.HoTen}</h4>
+                                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-200 text-teal-800">
+                                                            BN#{selectedPatient.MaBenhNhan}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-slate-600 mt-0.5">
+                                                        SĐT: <strong className="text-slate-800">{selectedPatient.SoDienThoai}</strong>
+                                                        {selectedPatient.GioiTinh && ` • ${selectedPatient.GioiTinh === 'NAM' ? 'Nam' : 'Nữ'}`}
+                                                        {selectedPatient.NgaySinh && ` • ${selectedPatient.NgaySinh}`}
+                                                    </p>
+                                                </div>
                                             </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSelectPatient(null)}
+                                                className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm"
+                                            >
+                                                Đổi bệnh nhân
+                                            </button>
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleSelectPatient(null)}
-                                            className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-sm"
-                                        >
-                                            Đổi bệnh nhân
-                                        </button>
+
+                                        {Number((selectedPatient as any).unpaid_debt || (selectedPatient as any).unpaidDebt || 0) > 0 && (
+                                            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-xs text-rose-900">
+                                                <div className="flex items-center gap-2">
+                                                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                                                    <div>
+                                                        <span className="font-bold">⚠️ Cảnh báo công nợ:</span> Bệnh nhân còn nợ viện phí lần khám trước: <strong className="text-rose-700">{formatCurrency((selectedPatient as any).unpaid_debt || (selectedPatient as any).unpaidDebt)}</strong>.
+                                                    </div>
+                                                </div>
+                                                <a
+                                                    href={`/receptionist/payment?search=${selectedPatient.SoDienThoai || selectedPatient.MaBenhNhan}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-[11px] shrink-0 shadow-sm transition-colors"
+                                                >
+                                                    Thu nợ ngay &rarr;
+                                                </a>
+                                            </div>
+                                        )}
                                     </div>
                                 ) : showNewPatientForm ? (
                                     /* FORM ĐĂNG KÝ HỒ SƠ BỆNH NHÂN MỚI TẠI CHỖ */
@@ -1794,8 +1829,13 @@ export default function Queue({
                                                                     {p.HoTen.charAt(0)}
                                                                 </div>
                                                                 <div>
-                                                                    <p className="text-xs font-bold text-slate-900 group-hover:text-primary">
+                                                                    <p className="text-xs font-bold text-slate-900 group-hover:text-primary flex items-center">
                                                                         {p.HoTen}
+                                                                        {Number((p as any).unpaid_debt || (p as any).unpaidDebt || 0) > 0 && (
+                                                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 ml-1.5">
+                                                                                Nợ: {formatCurrency((p as any).unpaid_debt || (p as any).unpaidDebt)}
+                                                                            </span>
+                                                                        )}
                                                                     </p>
                                                                     <p className="text-[11px] text-slate-500">
                                                                         SĐT: {p.SoDienThoai} • {p.GioiTinh === 'NAM' ? 'Nam' : 'Nữ'} {age ? `• ${age} tuổi` : ''}

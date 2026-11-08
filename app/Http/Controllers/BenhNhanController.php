@@ -165,22 +165,44 @@ class BenhNhanController extends Controller
         $q = trim((string) $request->input('q', ''));
         if (empty($q)) {
             $patients = BenhNhan::orderBy('MaBenhNhan', 'desc')->take(20)->get();
-            return response()->json([
-                'success' => true,
-                'data' => $patients,
-            ]);
+        } else {
+            $patients = BenhNhan::where(function ($query) use ($q) {
+                $query->where('HoTen', 'like', "%{$q}%")
+                      ->orWhere('SoDienThoai', 'like', "%{$q}%");
+                if (is_numeric($q)) {
+                    $query->orWhere('MaBenhNhan', (int)$q);
+                }
+            })
+            ->orderBy('MaBenhNhan', 'desc')
+            ->take(30)
+            ->get();
         }
 
-        $patients = BenhNhan::where(function ($query) use ($q) {
-            $query->where('HoTen', 'like', "%{$q}%")
-                  ->orWhere('SoDienThoai', 'like', "%{$q}%");
-            if (is_numeric($q)) {
-                $query->orWhere('MaBenhNhan', (int)$q);
+        // Đính kèm công nợ viện phí còn nợ của bệnh nhân
+        $patientIds = $patients->pluck('MaBenhNhan');
+        $debts = [];
+        $debtCounts = [];
+        if ($patientIds->isNotEmpty()) {
+            $invoices = HoaDon::whereHas('luotKham', function ($query) use ($patientIds) {
+                $query->whereIn('MaBenhNhan', $patientIds);
+            })
+            ->whereIn('TrangThai', ['CHUA_THANH_TOAN', 'THANH_TOAN_MOT_PHAN'])
+            ->with(['luotKham:MaLuotKham,MaBenhNhan', 'thanhToans'])
+            ->get();
+
+            foreach ($invoices as $inv) {
+                $bnId = $inv->luotKham?->MaBenhNhan;
+                if ($bnId && $inv->ConLai > 0) {
+                    $debts[$bnId] = ($debts[$bnId] ?? 0) + $inv->ConLai;
+                    $debtCounts[$bnId] = ($debtCounts[$bnId] ?? 0) + 1;
+                }
             }
-        })
-        ->orderBy('MaBenhNhan', 'desc')
-        ->take(30)
-        ->get();
+        }
+
+        $patients->each(function ($p) use ($debts, $debtCounts) {
+            $p->unpaid_debt = $debts[$p->MaBenhNhan] ?? 0;
+            $p->unpaid_invoices_count = $debtCounts[$p->MaBenhNhan] ?? 0;
+        });
 
         return response()->json([
             'success' => true,
@@ -636,11 +658,33 @@ class BenhNhanController extends Controller
             ->orderBy('HoTen', 'asc')
             ->get();
 
+        // Kiểm tra công nợ viện phí chưa thanh toán từ các lần khám trước
+        $patient = $user->benhNhan;
+        $unpaidDebt = 0;
+        $unpaidCount = 0;
+        if ($patient) {
+            $unpaidInvoices = HoaDon::whereHas('luotKham', function ($q) use ($patient) {
+                $q->where('MaBenhNhan', $patient->MaBenhNhan);
+            })
+            ->whereIn('TrangThai', ['CHUA_THANH_TOAN', 'THANH_TOAN_MOT_PHAN'])
+            ->with('thanhToans')
+            ->get();
+
+            foreach ($unpaidInvoices as $inv) {
+                if ($inv->ConLai > 0) {
+                    $unpaidDebt += $inv->ConLai;
+                    $unpaidCount++;
+                }
+            }
+        }
+
         return Inertia::render('Patient/BookAppointment', [
             'specialties' => $specialties,
             'doctors' => $doctors,
             'preselectedDoctorId' => $request->input('doctor_id'),
             'preselectedSpecialtyId' => $request->input('specialty_id'),
+            'unpaidDebt' => $unpaidDebt,
+            'unpaidCount' => $unpaidCount,
         ]);
     }
 

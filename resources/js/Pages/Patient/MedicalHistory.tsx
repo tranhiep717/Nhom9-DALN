@@ -427,18 +427,48 @@ export default function MedicalHistory({ auth, visits = [], filters = {} }: Medi
 
                                             {/* 4. Tình trạng viện phí của đợt khám */}
                                             {hd && (
-                                                <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-                                                    <div className="flex items-center gap-2">
-                                                        <Receipt className="w-4 h-4 text-teal-600" />
-                                                        <span className="font-bold text-slate-800">Hóa đơn #{hd.MaHoaDon}:</span>
-                                                        <span className="font-semibold text-teal-700">{formatCurrency(hd.BenhNhanChiTra)}</span>
-                                                        <span className="text-slate-400">| Đã trả: {formatCurrency(hd.DaThanhToan)}</span>
+                                                <div className={`rounded-xl border p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs ${
+                                                    hd.TrangThai === 'DA_THANH_TOAN'
+                                                        ? 'bg-emerald-50/50 border-emerald-200'
+                                                        : 'bg-rose-50 border-rose-200'
+                                                }`}>
+                                                    <div className="flex items-center gap-2.5">
+                                                        {hd.TrangThai === 'DA_THANH_TOAN' ? (
+                                                            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                                                        ) : (
+                                                            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                                                        )}
+                                                        <div>
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                <span className="font-bold text-slate-800">Hóa đơn #{hd.MaHoaDon}:</span>
+                                                                <span className="font-semibold text-slate-900">{formatCurrency(hd.BenhNhanChiTra)}</span>
+                                                                <span className="text-slate-500">| Đã trả: {formatCurrency(hd.DaThanhToan)}</span>
+                                                                {hd.TrangThai === 'DA_THANH_TOAN' ? (
+                                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                                                        Đã thanh toán đủ
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">
+                                                                        Còn nợ: {formatCurrency(hd.ConLai)}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            {hd.TrangThai !== 'DA_THANH_TOAN' && (
+                                                                <p className="text-[11px] text-rose-700 mt-1">
+                                                                    Khoản viện phí lần khám này chưa được tất toán. Vui lòng thanh toán tại Quầy Thu ngân hoặc thanh toán trực tuyến.
+                                                                </p>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                     <Link
                                                         href="/patient/billing"
-                                                        className="text-teal-600 hover:text-teal-700 font-semibold"
+                                                        className={`font-bold px-3.5 py-1.5 rounded-xl transition-colors shrink-0 whitespace-nowrap ${
+                                                            hd.TrangThai === 'DA_THANH_TOAN'
+                                                                ? 'text-teal-700 hover:text-teal-800 hover:bg-teal-50 border border-teal-200'
+                                                                : 'bg-rose-600 text-white hover:bg-rose-700 shadow-sm'
+                                                        }`}
                                                     >
-                                                        Xem chi tiết viện phí & thanh toán →
+                                                        {hd.TrangThai === 'DA_THANH_TOAN' ? 'Xem hóa đơn →' : 'Thanh toán ngay →'}
                                                     </Link>
                                                 </div>
                                             )}

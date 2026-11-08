@@ -20,7 +20,7 @@ import {
     ShieldCheck,
     Loader2
 } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import axios from 'axios';
 import { adminNavItems } from '@/constants/navigation';
 import AdminPagination from '@/Components/AdminPagination';
@@ -59,6 +59,10 @@ export default function Patients({ auth, patients = [], filters = {} }: Patients
 
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [patients]);
 
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [selectedPatient, setSelectedPatient] = useState<any | null>(null);

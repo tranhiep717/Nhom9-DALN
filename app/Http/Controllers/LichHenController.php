@@ -229,12 +229,33 @@ class LichHenController extends Controller
             $gioKham = substr($newLichHen->caKham?->GioBatDau ?? '08:00', 0, 5);
             $maBacSiCa = $newLichHen->caKham?->lichLamViec?->MaBacSi;
 
+            // Kiểm tra công nợ viện phí lần khám trước của bệnh nhân
+            $unpaidInvoices = HoaDon::whereHas('luotKham', function ($q) use ($maBenhNhan) {
+                $q->where('MaBenhNhan', $maBenhNhan);
+            })
+            ->whereIn('TrangThai', ['CHUA_THANH_TOAN', 'THANH_TOAN_MOT_PHAN'])
+            ->with('thanhToans')
+            ->get();
+
+            $unpaidDebt = 0;
+            foreach ($unpaidInvoices as $inv) {
+                $unpaidDebt += $inv->ConLai;
+            }
+
+            $debtPatientNote = "";
+            $debtReceptionistNote = "";
+            if ($unpaidDebt > 0) {
+                $debtFormatted = number_format($unpaidDebt, 0, ',', '.') . ' đ';
+                $debtPatientNote = " ⚠️ Lưu ý viện phí lần trước: Bạn hiện còn khoản nợ viện phí {$debtFormatted}. Vui lòng thanh toán tại Quầy Thu ngân khi đến phòng khám.";
+                $debtReceptionistNote = " (⚠️ Bệnh nhân còn nợ viện phí cũ: {$debtFormatted})";
+            }
+
             // Thông báo Bệnh nhân
             NotificationService::sendToPatient(
                 $maBenhNhan,
                 'LICH_HEN',
                 'Đặt lịch khám thành công',
-                "Lịch hẹn #{$newLichHen->MaLichHen} vào lúc {$gioKham} ngày {$ngayKham} đã được ghi nhận thành công.",
+                "Lịch hẹn #{$newLichHen->MaLichHen} vào lúc {$gioKham} ngày {$ngayKham} đã được ghi nhận thành công.{$debtPatientNote}",
                 '/appointments'
             );
 
@@ -243,7 +264,7 @@ class LichHenController extends Controller
                 'LE_TAN',
                 'LICH_HEN',
                 'Lịch hẹn khám mới',
-                "Bệnh nhân {$tenBN} vừa đặt lịch hẹn #{$newLichHen->MaLichHen} khám ngày {$ngayKham}.",
+                "Bệnh nhân {$tenBN} vừa đặt lịch hẹn #{$newLichHen->MaLichHen} khám ngày {$ngayKham}.{$debtReceptionistNote}",
                 '/receptionist/queue'
             );
 
@@ -259,10 +280,16 @@ class LichHenController extends Controller
             }
         }
 
+        $resMsg = 'Đặt lịch khám thành công. Lịch hẹn của bạn đang chờ xác nhận.';
+        if (isset($unpaidDebt) && $unpaidDebt > 0) {
+            $resMsg .= ' Lưu ý: Bạn còn nợ viện phí lần khám trước (' . number_format($unpaidDebt, 0, ',', '.') . ' đ), vui lòng thanh toán tại quầy khi đến khám.';
+        }
+
         return response()->json([
             'success' => true,
-            'message' => 'Đặt lịch khám thành công. Lịch hẹn của bạn đang chờ xác nhận.',
+            'message' => $resMsg,
             'data' => $newLichHen,
+            'unpaid_debt' => $unpaidDebt ?? 0,
         ], 201);
     }
 
@@ -493,13 +520,6 @@ class LichHenController extends Controller
             $activeQueue = (clone $orderedQueueQuery)->paginate($perPage, ['*'], 'page', $page)->withQueryString();
         }
 
-        // Gán số lần gọi và quyền bỏ lượt cho từng lượt khám trên trang hiện tại
-        $queueService = app(\App\Services\QueueManagementService::class);
-        $activeQueue->getCollection()->each(function ($v) use ($queueService) {
-            $v->call_count = $queueService->getCallCount($v);
-            $v->can_skip = ($v->call_count >= 3 && in_array($v->TrangThai, ['CHO_KHAM', 'CHO_KHAM_LAI']));
-        });
-
         // Danh mục Bác sĩ và Chuyên khoa phục vụ dropdown bộ lọc
         $doctors = BacSi::where('TrangThai', 'HOAT_DONG')
             ->select('MaBacSi', 'HoTen', 'HocVi', 'MaChuyenKhoa')
@@ -516,6 +536,45 @@ class LichHenController extends Controller
             ->orderBy('HoTen', 'asc')
             ->take(100)
             ->get();
+
+        // Kiểm tra công nợ viện phí chưa thanh toán cho bệnh nhân trong hàng chờ và danh sách tiếp nhận
+        $patientIds = $activeQueue->getCollection()->pluck('MaBenhNhan')->filter()
+            ->merge($availablePatients->pluck('MaBenhNhan'))
+            ->unique()->values();
+
+        $unpaidDebts = [];
+        $unpaidCounts = [];
+        if ($patientIds->isNotEmpty()) {
+            $invoices = HoaDon::whereHas('luotKham', function ($q) use ($patientIds) {
+                $q->whereIn('MaBenhNhan', $patientIds);
+            })
+            ->whereIn('TrangThai', ['CHUA_THANH_TOAN', 'THANH_TOAN_MOT_PHAN'])
+            ->with(['luotKham:MaLuotKham,MaBenhNhan', 'thanhToans'])
+            ->get();
+
+            foreach ($invoices as $inv) {
+                $bnId = $inv->luotKham?->MaBenhNhan;
+                if ($bnId && $inv->ConLai > 0) {
+                    $unpaidDebts[$bnId] = ($unpaidDebts[$bnId] ?? 0) + $inv->ConLai;
+                    $unpaidCounts[$bnId] = ($unpaidCounts[$bnId] ?? 0) + 1;
+                }
+            }
+        }
+
+        // Gán số lần gọi, quyền bỏ lượt và công nợ viện phí cho từng lượt khám trên trang hiện tại
+        $queueService = app(\App\Services\QueueManagementService::class);
+        $activeQueue->getCollection()->each(function ($v) use ($queueService, $unpaidDebts, $unpaidCounts) {
+            $v->call_count = $queueService->getCallCount($v);
+            $v->can_skip = ($v->call_count >= 3 && in_array($v->TrangThai, ['CHO_KHAM', 'CHO_KHAM_LAI']));
+            $bnId = $v->MaBenhNhan;
+            $v->unpaid_debt = $unpaidDebts[$bnId] ?? 0;
+            $v->unpaid_count = $unpaidCounts[$bnId] ?? 0;
+        });
+
+        $availablePatients->each(function ($p) use ($unpaidDebts, $unpaidCounts) {
+            $p->unpaid_debt = $unpaidDebts[$p->MaBenhNhan] ?? 0;
+            $p->unpaid_count = $unpaidCounts[$p->MaBenhNhan] ?? 0;
+        });
 
         $shiftsQuery = CaKham::whereIn('TrangThai', ['CON_TRONG', 'MO'])
             ->with(['lichLamViec.bacSi.chuyenKhoa']);

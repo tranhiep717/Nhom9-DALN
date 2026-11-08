@@ -196,6 +196,36 @@ export default function Dashboard({
                     </div>
                 </div>
 
+                {/* Banner Cảnh báo công nợ nếu bệnh nhân còn nợ viện phí lần khám trước */}
+                {Number(stats?.unpaidDebt || 0) > 0 && (
+                    <div className="bg-rose-50 border-2 border-rose-200 rounded-3xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+                        <div className="flex items-start sm:items-center gap-3.5">
+                            <div className="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                                <AlertCircle className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-rose-950 text-sm sm:text-base flex items-center gap-2">
+                                    Cảnh báo công nợ: Bạn còn khoản viện phí chưa thanh toán
+                                    <span className="px-2 py-0.5 rounded-full text-xs bg-rose-200 text-rose-800 font-extrabold">
+                                        {stats?.unpaidCount || 1} hóa đơn
+                                    </span>
+                                </h3>
+                                <p className="text-rose-700 text-xs sm:text-sm mt-0.5">
+                                    Tổng số tiền còn nợ: <strong className="font-black text-rose-900">{formatCurrency(stats?.unpaidDebt || 0)}</strong>. Vui lòng thanh toán tại Quầy Thu ngân hoặc thanh toán trực tuyến để đủ điều kiện cấp phát thuốc và tất toán đợt điều trị.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                            <Link
+                                href="/patient/billing"
+                                className="w-full sm:w-auto text-center px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow transition-colors whitespace-nowrap"
+                            >
+                                Thanh toán viện phí ngay &rarr;
+                            </Link>
+                        </div>
+                    </div>
+                )}
+
                 {/* Grid Thống kê */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm hover:shadow transition-all">

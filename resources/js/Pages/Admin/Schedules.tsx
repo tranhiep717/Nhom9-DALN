@@ -21,7 +21,7 @@ import {
     Info,
     ExternalLink
 } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import axios from 'axios';
 import { adminNavItems } from '@/constants/navigation';
 
@@ -126,6 +126,10 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
     const [activeScheduleTab, setActiveScheduleTab] = useState<ScheduleTab>('doctor');
 
     const [scheduleList, setScheduleList] = useState<ScheduleItem[]>(schedules);
+
+    useEffect(() => {
+        setScheduleList(schedules);
+    }, [schedules]);
 
     // Thống kê ca trực thực tế phục vụ KPI Quản trị
     const shiftStats = useMemo(() => {
@@ -516,7 +520,10 @@ export default function AdminSchedules({ auth, schedules = [], doctors = [], sta
                             <button
                                 key={tab.key}
                                 type="button"
-                                onClick={() => setActiveScheduleTab(tab.key)}
+                                onClick={() => {
+                                    setActiveScheduleTab(tab.key);
+                                    setDoctorFilter('');
+                                }}
                                 className={`px-4 py-2.5 rounded-xl border text-sm font-semibold transition-all ${
                                     activeScheduleTab === tab.key
                                         ? `${tab.color} shadow-sm`

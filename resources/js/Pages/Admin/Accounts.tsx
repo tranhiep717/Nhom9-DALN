@@ -21,7 +21,7 @@ import {
     Briefcase,
     FlaskConical
 } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import axios from 'axios';
 import { adminNavItems } from '@/constants/navigation';
 import AdminPagination from '@/Components/AdminPagination';
@@ -100,6 +100,13 @@ export default function Accounts({ auth, users = [], roles = [], unlinkedDoctors
     const [availableStaff, setAvailableStaff] = useState<StaffItem[]>(unlinkedStaff);
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
+
+    useEffect(() => {
+        setAccountList(users);
+        setAvailableDoctors(unlinkedDoctors);
+        setAvailableStaff(unlinkedStaff);
+        setCurrentPage(1);
+    }, [users, unlinkedDoctors, unlinkedStaff]);
 
     const [modalOpen, setModalOpen] = useState(false);
     const [editingAccount, setEditingAccount] = useState<AccountItem | null>(null);

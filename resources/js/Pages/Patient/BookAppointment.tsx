@@ -52,6 +52,8 @@ interface BookAppointmentProps {
     doctors: Doctor[];
     preselectedDoctorId?: string | number;
     preselectedSpecialtyId?: string | number;
+    unpaidDebt?: number;
+    unpaidCount?: number;
 }
 
 export default function BookAppointment({
@@ -60,8 +62,14 @@ export default function BookAppointment({
     doctors = [],
     preselectedDoctorId,
     preselectedSpecialtyId,
+    unpaidDebt = 0,
+    unpaidCount = 0,
 }: BookAppointmentProps) {
     const today = new Date().toISOString().split('T')[0];
+
+    const formatCurrency = (amount: number) => {
+        return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+    };
 
     const [selectedSpecialty, setSelectedSpecialty] = useState<string | number>(preselectedSpecialtyId || '');
     const [selectedDoctor, setSelectedDoctor] = useState<string | number>(preselectedDoctorId || '');
@@ -210,6 +218,31 @@ export default function BookAppointment({
                     </p>
                 </div>
 
+                {/* Banner Cảnh báo nếu bệnh nhân còn nợ viện phí lần khám trước */}
+                {Number(unpaidDebt) > 0 && !successData && (
+                    <div className="p-4 bg-amber-50/90 border border-amber-300 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-900 shadow-sm">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+                                <AlertCircle className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <p className="font-bold text-amber-950 text-sm">
+                                    Lưu ý viện phí lần khám trước ({unpaidCount || 1} khoản chưa thanh toán)
+                                </p>
+                                <p className="text-amber-800 text-xs mt-0.5">
+                                    Hệ thống ghi nhận bạn còn khoản nợ viện phí <strong className="font-bold text-amber-950">{formatCurrency(Number(unpaidDebt))}</strong>. Bạn vẫn được quyền đặt lịch khám mới bình thường, tuy nhiên vui lòng thanh toán khoản nợ này tại Quầy Thu ngân khi đến phòng khám.
+                                </p>
+                            </div>
+                        </div>
+                        <Link
+                            href="/patient/billing"
+                            className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition-colors shrink-0 whitespace-nowrap shadow-sm"
+                        >
+                            Xem khoản nợ &rarr;
+                        </Link>
+                    </div>
+                )}
+
                 {/* Màn hình thành công */}
                 {successData ? (
                     <div className="bg-white rounded-3xl border border-emerald-200 p-8 sm:p-12 text-center shadow-sm space-y-6 animate-in fade-in zoom-in-95">
@@ -257,6 +290,16 @@ export default function BookAppointment({
                                 </div>
                             )}
                         </div>
+
+                        {Number(unpaidDebt) > 0 && (
+                            <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl max-w-md mx-auto text-xs text-amber-900 text-left flex items-start gap-2.5">
+                                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                <div>
+                                    <strong className="block font-bold text-amber-950 mb-0.5">Lưu ý thanh toán viện phí:</strong>
+                                    Bạn có khoản nợ viện phí lần trước ({formatCurrency(Number(unpaidDebt))}). Vui lòng thanh toán tại Quầy Thu ngân khi đến phòng khám để thuận tiện cho việc nhận thuốc và thực hiện xét nghiệm.
+                                </div>
+                            </div>
+                        )}
 
                         <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                             <Link

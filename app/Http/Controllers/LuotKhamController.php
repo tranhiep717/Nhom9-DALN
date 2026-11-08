@@ -8,6 +8,7 @@ use App\Models\CaKham;
 use App\Models\ChuyenKhoa;
 use App\Models\DichVu;
 use App\Models\DonThuoc;
+use App\Models\HoaDon;
 use App\Models\LichHen;
 use App\Models\LuotKham;
 use App\Models\PhieuKham;
@@ -474,15 +475,34 @@ class LuotKhamController extends Controller
                 );
             }
 
+            // Kiểm tra công nợ cũ của bệnh nhân từ các lần khám trước
+            $unpaidDebt = 0;
+            $unpaidInvoices = HoaDon::whereHas('luotKham', function ($q) use ($visit) {
+                $q->where('MaBenhNhan', $visit->MaBenhNhan)
+                  ->where('MaLuotKham', '!=', $visit->MaLuotKham);
+            })
+            ->whereIn('TrangThai', ['CHUA_THANH_TOAN', 'THANH_TOAN_MOT_PHAN'])
+            ->with('thanhToans')
+            ->get();
+
+            foreach ($unpaidInvoices as $inv) {
+                $unpaidDebt += $inv->ConLai;
+            }
+
+            $patientNote = $unpaidDebt > 0 ? " Lưu ý: Bạn còn khoản nợ viện phí lần trước (" . number_format($unpaidDebt, 0, ',', '.') . " đ), vui lòng thanh toán tại quầy thu ngân." : "";
+
             NotificationService::sendToPatient(
                 $visit->MaBenhNhan,
                 'TIEP_NHAN',
                 'Tiếp nhận phòng khám thành công',
-                "Bạn đã được tiếp nhận thành công. Số phiếu của bạn: {$visit->SoPhieu} (STT: {$visit->STTTrongNgay}).",
+                "Bạn đã được tiếp nhận thành công. Số phiếu của bạn: {$visit->SoPhieu} (STT: {$visit->STTTrongNgay}).{$patientNote}",
                 "/appointments"
             );
 
             $msg = "Tiếp nhận thành công bệnh nhân {$tenBN}. Số phiếu: {$visit->SoPhieu} (STT: {$visit->STTTrongNgay}).";
+            if ($unpaidDebt > 0) {
+                $msg .= " ⚠️ Cảnh báo: Bệnh nhân còn nợ viện phí lần trước (" . number_format($unpaidDebt, 0, ',', '.') . " đ). Vui lòng nhắc bệnh nhân thanh toán tại quầy thu ngân.";
+            }
 
             if ($request->header('X-Inertia')) {
                 return redirect()->back()->with('success', $msg);

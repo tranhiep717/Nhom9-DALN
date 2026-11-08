@@ -27,6 +27,8 @@ class DonThuocController extends Controller
         $query = DonThuoc::query()->with([
             'luotKham:MaLuotKham,MaBenhNhan,MaBacSi,ThoiGianTiepNhan,TrangThai',
             'luotKham.benhNhan:MaBenhNhan,HoTen,SoDienThoai,NgaySinh,GioiTinh',
+            'luotKham.hoaDon:MaHoaDon,MaLuotKham,TongTien,GiamGia,BaoHiemChiTra,BenhNhanChiTra,TrangThai',
+            'luotKham.hoaDon.thanhToans',
             'bacSi:MaBacSi,HoTen,HocVi',
             'chiTietDonThuocs.thuoc:MaThuoc,TenThuoc,DonViTinh,DangBaoChe',
         ]);
